@@ -92,8 +92,7 @@ impl ModuleLoader for TypescriptModuleLoader {
                 })?;
                 let res = parsed.transpile(
                     &deno_ast::TranspileOptions {
-                        imports_not_used_as_values:
-                        deno_ast::ImportsNotUsedAsValues::Remove,
+                        imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
                         use_decorators_proposal: true,
                         ..Default::default()
                     },

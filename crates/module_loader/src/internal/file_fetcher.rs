@@ -12,6 +12,12 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::LoaderChecksum;
 
+use crate::internal::auth_tokens::AuthTokens;
+use crate::internal::cache_setting::CacheSetting;
+use crate::internal::http_util::{
+    CacheSemantics, FetchOnceArgs, FetchOnceResult, HttpClientProvider,
+};
+use deno_cache_dir::HttpCache;
 use deno_permissions::PermissionsContainer;
 use deno_web::BlobStore;
 use log::debug;
@@ -22,13 +28,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
-use deno_cache_dir::HttpCache;
-use crate::internal::auth_tokens::AuthTokens;
-use crate::internal::cache_setting::CacheSetting;
-use crate::internal::http_util::{CacheSemantics, FetchOnceArgs, FetchOnceResult, HttpClientProvider};
 
-pub const SUPPORTED_SCHEMES: [&str; 5] =
-    ["data", "blob", "file", "http", "https"];
+pub const SUPPORTED_SCHEMES: [&str; 5] = ["data", "blob", "file", "http", "https"];
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TextDecodedFile {
@@ -75,19 +76,13 @@ impl File {
                 self.maybe_headers.as_ref(),
             );
         let specifier = self.specifier;
-        match deno_graph::source::decode_source(
-            &specifier,
-            self.source,
-            maybe_charset,
-        ) {
+        match deno_graph::source::decode_source(&specifier, self.source, maybe_charset) {
             Ok(source) => Ok(TextDecodedFile {
                 media_type,
                 specifier,
                 source,
             }),
-            Err(err) => {
-                Err(err).with_context(|| format!("Failed decoding \"{}\".", specifier))
-            }
+            Err(err) => Err(err).with_context(|| format!("Failed decoding \"{}\".", specifier)),
         }
     }
 }
@@ -111,9 +106,9 @@ impl MemoryFiles {
 
 /// Fetch a source file from the local file system.
 fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
-    let local = specifier.to_file_path().map_err(|_| {
-        uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
-    })?;
+    let local = specifier
+        .to_file_path()
+        .map_err(|_| uri_error(format!("Invalid file path.\n  Specifier: {specifier}")))?;
     let bytes = fs::read(local)?;
 
     Ok(File {
@@ -124,9 +119,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
 }
 
 /// Return a validated scheme for a given module specifier.
-fn get_validated_scheme(
-    specifier: &ModuleSpecifier,
-) -> Result<String, AnyError> {
+fn get_validated_scheme(specifier: &ModuleSpecifier) -> Result<String, AnyError> {
     let scheme = specifier.scheme();
     if !SUPPORTED_SCHEMES.contains(&scheme) {
         Err(generic_error(format!(
@@ -224,17 +217,16 @@ impl FileFetcher {
         maybe_checksum: Option<&LoaderChecksum>,
     ) -> Result<Option<FileOrRedirect>, AnyError> {
         debug!(
-      "FileFetcher::fetch_cached_no_follow - specifier: {}",
-      specifier
-    );
+            "FileFetcher::fetch_cached_no_follow - specifier: {}",
+            specifier
+        );
 
         let cache_key = self.http_cache.cache_item_key(specifier)?; // compute this once
         let Some(headers) = self.http_cache.read_headers(&cache_key)? else {
             return Ok(None);
         };
         if let Some(redirect_to) = headers.get("location") {
-            let redirect =
-                deno_core::resolve_import(redirect_to, specifier.as_str())?;
+            let redirect = deno_core::resolve_import(redirect_to, specifier.as_str())?;
             return Ok(Some(FileOrRedirect::Redirect(redirect)));
         }
         let result = self.http_cache.read_file_bytes(
@@ -252,13 +244,11 @@ impl FileFetcher {
                 deno_cache_dir::CacheReadFileError::ChecksumIntegrity(err) => {
                     // convert to the equivalent deno_graph error so that it
                     // enhances it if this is passed to deno_graph
-                    return Err(
-                        deno_graph::source::ChecksumIntegrityError {
-                            actual: err.actual,
-                            expected: err.expected,
-                        }
-                            .into(),
-                    );
+                    return Err(deno_graph::source::ChecksumIntegrityError {
+                        actual: err.actual,
+                        expected: err.expected,
+                    }
+                    .into());
                 }
             },
         };
@@ -272,10 +262,7 @@ impl FileFetcher {
 
     /// Convert a data URL into a file, resulting in an error if the URL is
     /// invalid.
-    fn fetch_data_url(
-        &self,
-        specifier: &ModuleSpecifier,
-    ) -> Result<File, AnyError> {
+    fn fetch_data_url(&self, specifier: &ModuleSpecifier) -> Result<File, AnyError> {
         debug!("FileFetcher::fetch_data_url() - specifier: {}", specifier);
         let data_url = deno_graph::source::RawDataUrl::parse(specifier)?;
         let (bytes, headers) = data_url.into_bytes_and_headers();
@@ -287,24 +274,17 @@ impl FileFetcher {
     }
 
     /// Get a blob URL.
-    async fn fetch_blob_url(
-        &self,
-        specifier: &ModuleSpecifier,
-    ) -> Result<File, AnyError> {
+    async fn fetch_blob_url(&self, specifier: &ModuleSpecifier) -> Result<File, AnyError> {
         debug!("FileFetcher::fetch_blob_url() - specifier: {}", specifier);
         let blob = self
             .blob_store
             .get_object_url(specifier.clone())
             .ok_or_else(|| {
-                custom_error(
-                    "NotFound",
-                    format!("Blob URL not found: \"{specifier}\"."),
-                )
+                custom_error("NotFound", format!("Blob URL not found: \"{specifier}\"."))
             })?;
 
         let bytes = blob.read_all().await?;
-        let headers =
-            HashMap::from([("content-type".to_string(), blob.media_type.clone())]);
+        let headers = HashMap::from([("content-type".to_string(), blob.media_type.clone())]);
 
         Ok(File {
             specifier: specifier.clone(),
@@ -321,9 +301,9 @@ impl FileFetcher {
         maybe_checksum: Option<&LoaderChecksum>,
     ) -> Result<FileOrRedirect, AnyError> {
         debug!(
-      "FileFetcher::fetch_remote_no_follow - specifier: {}",
-      specifier
-    );
+            "FileFetcher::fetch_remote_no_follow - specifier: {}",
+            specifier
+        );
 
         if self.should_use_cache(specifier, cache_setting) {
             if let Some(file_or_redirect) =
@@ -343,11 +323,7 @@ impl FileFetcher {
         }
 
         {
-            log::log!(
-        self.download_log_level,
-        "{}",
-        specifier
-      );
+            log::log!(self.download_log_level, "{}", specifier);
         }
 
         let maybe_etag = self
@@ -431,11 +407,7 @@ impl FileFetcher {
                     continue;
                 }
                 FetchOnceResult::ServerError(status) => {
-                    handle_request_or_server_error(
-                        &mut retried,
-                        specifier,
-                        status.to_string(),
-                    )
+                    handle_request_or_server_error(&mut retried, specifier, status.to_string())
                         .await?;
                     continue;
                 }
@@ -447,11 +419,7 @@ impl FileFetcher {
     }
 
     /// Returns if the cache should be used for a given specifier.
-    fn should_use_cache(
-        &self,
-        specifier: &ModuleSpecifier,
-        cache_setting: &CacheSetting,
-    ) -> bool {
+    fn should_use_cache(&self, specifier: &ModuleSpecifier, cache_setting: &CacheSetting) -> bool {
         match cache_setting {
             CacheSetting::ReloadAll => false,
             CacheSetting::Use | CacheSetting::Only => true,
@@ -462,9 +430,7 @@ impl FileFetcher {
                 let Ok(Some(headers)) = self.http_cache.read_headers(&cache_key) else {
                     return false;
                 };
-                let Ok(Some(download_time)) =
-                    self.http_cache.read_download_time(&cache_key)
-                else {
+                let Ok(Some(download_time)) = self.http_cache.read_download_time(&cache_key) else {
                     return false;
                 };
                 let cache_semantics =
@@ -498,20 +464,16 @@ impl FileFetcher {
         specifier: &ModuleSpecifier,
         permissions: &PermissionsContainer,
     ) -> Result<File, AnyError> {
-        self
-            .fetch_with_options(FetchOptions {
-                specifier,
-                permissions,
-                maybe_accept: None,
-                maybe_cache_setting: None,
-            })
-            .await
+        self.fetch_with_options(FetchOptions {
+            specifier,
+            permissions,
+            maybe_accept: None,
+            maybe_cache_setting: None,
+        })
+        .await
     }
 
-    pub async fn fetch_with_options(
-        &self,
-        options: FetchOptions<'_>,
-    ) -> Result<File, AnyError> {
+    pub async fn fetch_with_options(&self, options: FetchOptions<'_>) -> Result<File, AnyError> {
         self.fetch_with_options_and_max_redirect(options, 10).await
     }
 
@@ -556,9 +518,9 @@ impl FileFetcher {
         let specifier = options.specifier;
         // note: this debug output is used by the tests
         debug!(
-      "FileFetcher::fetch_no_follow_with_options - specifier: {}",
-      specifier
-    );
+            "FileFetcher::fetch_no_follow_with_options - specifier: {}",
+            specifier
+        );
         let scheme = get_validated_scheme(specifier)?;
         options.permissions.check_specifier(specifier)?;
         if let Some(file) = self.memory_files.get(specifier) {
@@ -570,8 +532,7 @@ impl FileFetcher {
         } else if scheme == "data" {
             self.fetch_data_url(specifier).map(FileOrRedirect::File)
         } else if scheme == "blob" {
-            self
-                .fetch_blob_url(specifier)
+            self.fetch_blob_url(specifier)
                 .await
                 .map(FileOrRedirect::File)
         } else if !self.allow_remote {
@@ -580,14 +541,13 @@ impl FileFetcher {
                 format!("A remote specifier was requested: \"{specifier}\", but --no-remote is specified."),
             ))
         } else {
-            self
-                .fetch_remote_no_follow(
-                    specifier,
-                    options.maybe_accept,
-                    options.maybe_cache_setting.unwrap_or(&self.cache_setting),
-                    maybe_checksum,
-                )
-                .await
+            self.fetch_remote_no_follow(
+                specifier,
+                options.maybe_accept,
+                options.maybe_cache_setting.unwrap_or(&self.cache_setting),
+                maybe_checksum,
+            )
+            .await
         }
     }
 

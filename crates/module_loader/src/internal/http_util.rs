@@ -24,14 +24,14 @@ use http::header::LOCATION;
 use http::StatusCode;
 use http_body_util::BodyExt;
 
+use crate::internal::auth_tokens::AuthToken;
+use crate::internal::versions::get_user_agent;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::ThreadId;
 use std::time::Duration;
 use std::time::SystemTime;
 use thiserror::Error;
-use crate::internal::auth_tokens::AuthToken;
-use crate::internal::versions::get_user_agent;
 
 // TODO(ry) HTTP headers are not unique key, value pairs. There may be more than
 // one header line with the same key. This should be changed to something like
@@ -51,11 +51,7 @@ pub struct CacheSemantics {
 }
 
 impl CacheSemantics {
-    pub fn new(
-        headers: HashMap<String, String>,
-        cached: SystemTime,
-        now: SystemTime,
-    ) -> Self {
+    pub fn new(headers: HashMap<String, String>, cached: SystemTime, now: SystemTime) -> Self {
         let cache_control = headers
             .get("cache-control")
             .map(|v| CacheControl::from_value(v).unwrap_or_default())
@@ -80,8 +76,7 @@ impl CacheSemantics {
 
     fn age_header_value(&self) -> Duration {
         Duration::from_secs(
-            self
-                .headers
+            self.headers
                 .get("age")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0),
@@ -135,13 +130,11 @@ impl CacheSemantics {
     }
 
     fn raw_server_date(&self) -> SystemTime {
-        self
-            .headers
+        self.headers
             .get("date")
             .and_then(|d| DateTime::parse_from_rfc2822(d).ok())
             .and_then(|d| {
-                SystemTime::UNIX_EPOCH
-                    .checked_add(Duration::from_secs(d.timestamp() as _))
+                SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(d.timestamp() as _))
             })
             .unwrap_or(self.cached)
     }
@@ -169,10 +162,10 @@ impl CacheSemantics {
             let has_max_stale = self.cache_control.max_stale.is_some();
             let allows_stale = has_max_stale
                 && self
-                .cache_control
-                .max_stale
-                .map(|val| val > self.age() - self.max_age())
-                .unwrap_or(true);
+                    .cache_control
+                    .max_stale
+                    .map(|val| val > self.age() - self.max_age())
+                    .unwrap_or(true);
             if !allows_stale {
                 return false;
             }
@@ -319,11 +312,7 @@ impl HttpClient {
         })
     }
 
-    pub fn post(
-        &self,
-        url: Url,
-        body: deno_fetch::ReqBody,
-    ) -> Result<RequestBuilder, http::Error> {
+    pub fn post(&self, url: Url, body: deno_fetch::ReqBody) -> Result<RequestBuilder, http::Error> {
         let mut req = http::Request::new(body);
         *req.method_mut() = http::Method::POST;
         *req.uri_mut() = url.as_str().parse()?;
@@ -333,11 +322,7 @@ impl HttpClient {
         })
     }
 
-    pub fn post_json<S>(
-        &self,
-        url: Url,
-        ser: &S,
-    ) -> Result<RequestBuilder, DownloadError>
+    pub fn post_json<S>(&self, url: Url, ser: &S) -> Result<RequestBuilder, DownloadError>
     where
         S: serde::Serialize,
     {
@@ -401,10 +386,7 @@ impl HttpClient {
         let response_headers = response.headers();
 
         if let Some(warning) = response_headers.get("X-Deno-Warning") {
-            log::warn!(
-        "{}",
-        warning.to_str().unwrap()
-      );
+            log::warn!("{}", warning.to_str().unwrap());
         }
 
         for key in response_headers.keys() {
@@ -445,9 +427,7 @@ impl HttpClient {
             return Err(err);
         }
 
-        let body =
-            get_response_body_with_progress(response)
-                .await?;
+        let body = get_response_body_with_progress(response).await?;
 
         Ok(FetchOnceResult::Code(body, result_headers))
     }
@@ -470,9 +450,7 @@ impl HttpClient {
         url: Url,
         maybe_header: Option<(HeaderName, HeaderValue)>,
     ) -> Result<Option<Vec<u8>>, DownloadError> {
-        self
-            .download_inner(url, maybe_header)
-            .await
+        self.download_inner(url, maybe_header).await
     }
 
     pub async fn get_redirected_url(
@@ -561,8 +539,7 @@ impl HttpClient {
 }
 
 fn is_error_connect(err: &AnyError) -> bool {
-    err
-        .downcast_ref::<hyper_util::client::legacy::Error>()
+    err.downcast_ref::<hyper_util::client::legacy::Error>()
         .map(|err| err.is_connect())
         .unwrap_or(false)
 }
@@ -651,9 +628,7 @@ impl RequestBuilder {
         self
     }
 
-    pub async fn send(
-        self,
-    ) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
+    pub async fn send(self) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
         self.client.send(self.req).await
     }
 

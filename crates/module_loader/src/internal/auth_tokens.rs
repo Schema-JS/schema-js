@@ -103,8 +103,7 @@ impl AuthDomain {
                 }
 
                 // If it's a suffix match, ensure a dot
-                if hostname.ends_with(suffix.as_ref())
-                    && hostname.ends_with(&format!(".{suffix}"))
+                if hostname.ends_with(suffix.as_ref()) && hostname.ends_with(&format!(".{suffix}"))
                 {
                     return true;
                 }
@@ -188,8 +187,7 @@ mod tests {
         );
         let fixture = resolve_url("http://127.0.0.1:8080/x/mod.ts").unwrap();
         assert_eq!(auth_tokens.get(&fixture), None);
-        let fixture =
-            resolve_url("https://deno.land.example.com/x/mod.ts").unwrap();
+        let fixture = resolve_url("https://deno.land.example.com/x/mod.ts").unwrap();
         assert_eq!(auth_tokens.get(&fixture), None);
         let fixture = resolve_url("https://deno.land:8080/x/mod.ts").unwrap();
         assert_eq!(auth_tokens.get(&fixture), None);
@@ -197,8 +195,7 @@ mod tests {
 
     #[test]
     fn test_auth_tokens_multiple() {
-        let auth_tokens =
-            AuthTokens::new(Some("abc123@deno.land;def456@example.com".to_string()));
+        let auth_tokens = AuthTokens::new(Some("abc123@deno.land;def456@example.com".to_string()));
         let fixture = resolve_url("https://deno.land/x/mod.ts").unwrap();
         assert_eq!(
             auth_tokens.get(&fixture).unwrap().to_string(),
@@ -213,8 +210,7 @@ mod tests {
 
     #[test]
     fn test_auth_tokens_port() {
-        let auth_tokens =
-            AuthTokens::new(Some("abc123@deno.land:8080".to_string()));
+        let auth_tokens = AuthTokens::new(Some("abc123@deno.land:8080".to_string()));
         let fixture = resolve_url("https://deno.land/x/mod.ts").unwrap();
         assert_eq!(auth_tokens.get(&fixture), None);
         let fixture = resolve_url("http://deno.land:8080/x/mod.ts").unwrap();
@@ -249,8 +245,7 @@ mod tests {
         );
         let fixture = resolve_url("http://127.0.0.1:8080/x/mod.ts").unwrap();
         assert_eq!(auth_tokens.get(&fixture), None);
-        let fixture =
-            resolve_url("https://deno.land.example.com/x/mod.ts").unwrap();
+        let fixture = resolve_url("https://deno.land.example.com/x/mod.ts").unwrap();
         assert_eq!(auth_tokens.get(&fixture), None);
         let fixture = resolve_url("https://deno.land:8080/x/mod.ts").unwrap();
         assert_eq!(auth_tokens.get(&fixture), None);
@@ -269,12 +264,8 @@ mod tests {
     #[test]
     fn test_case_insensitive() {
         let domain = AuthDomain::from("EXAMPLE.com");
-        assert!(
-            domain.matches(&ModuleSpecifier::parse("http://example.com").unwrap())
-        );
-        assert!(
-            domain.matches(&ModuleSpecifier::parse("http://example.COM").unwrap())
-        );
+        assert!(domain.matches(&ModuleSpecifier::parse("http://example.com").unwrap()));
+        assert!(domain.matches(&ModuleSpecifier::parse("http://example.COM").unwrap()));
     }
 
     #[test]
@@ -298,8 +289,7 @@ mod tests {
             ("[2001:db8:a::123]", vec!["[2001:db8:a::123]"]),
         ];
         let url = |c: &str| ModuleSpecifier::parse(&format!("http://{c}")).unwrap();
-        let url_port =
-            |c: &str| ModuleSpecifier::parse(&format!("http://{c}:8080")).unwrap();
+        let url_port = |c: &str| ModuleSpecifier::parse(&format!("http://{c}:8080")).unwrap();
 
         // Generate each candidate with and without a port
         let candidates = candidates

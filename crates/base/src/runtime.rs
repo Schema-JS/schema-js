@@ -2,24 +2,29 @@ use crate::snapshot;
 use anyhow::{bail, Error, Result};
 use deno_core::_ops::RustToV8;
 use deno_core::url::Url;
-use deno_core::{v8, Extension, JsRuntime, ModuleId, ModuleSpecifier, RuntimeOptions, located_script_name, ModuleCodeString};
+use deno_core::{
+    located_script_name, v8, Extension, JsRuntime, ModuleCodeString, ModuleId, ModuleSpecifier,
+    RuntimeOptions,
+};
 use schemajs_config::SchemeJsConfig;
-use schemajs_engine::engine::SchemeJsEngine;
+use schemajs_engine::engine::{ArcSchemeJsEngine, SchemeJsEngine};
+use schemajs_module_loader::ts_module_loader::TypescriptModuleLoader;
+use schemajs_primitives::database::Database;
 use schemajs_primitives::table::Table;
 use schemajs_workers::context::{MainWorkerRuntimeOpts, WorkerRuntimeOpts};
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use walkdir::{DirEntry, WalkDir};
-use schemajs_module_loader::ts_module_loader::TypescriptModuleLoader;
 
 pub struct SchemeJsRuntime {
     pub js_runtime: JsRuntime,
     pub config: WorkerRuntimeOpts,
     pub config_file: PathBuf,
     pub current_folder: PathBuf,
+    pub engine: SchemeJsEngine,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,11 +51,10 @@ impl SchemeJsRuntime {
         };
 
         let config = SchemeJsConfig::new(config_file.clone())?;
-        let engine = Arc::new(RefCell::new(SchemeJsEngine::new()));
 
         let extensions: Vec<Extension> = vec![
             schemajs_primitives::sjs_primitives::init_ops(),
-            schemajs_engine::sjs_engine::init_ops(engine),
+            schemajs_core::sjs_core::init_ops(),
         ];
 
         let runtime_opts = RuntimeOptions {
@@ -65,8 +69,6 @@ impl SchemeJsRuntime {
 
         let mut js_runtime = JsRuntime::new(runtime_opts);
 
-
-
         // Bootstrapping Stage
         {
             let script = format!("globalThis.bootstrap()");
@@ -80,6 +82,7 @@ impl SchemeJsRuntime {
             config: WorkerRuntimeOpts::Main(MainWorkerRuntimeOpts { config }),
             config_file,
             current_folder: folder_path,
+            engine: SchemeJsEngine::new(),
         })
     }
 
@@ -106,16 +109,29 @@ impl SchemeJsRuntime {
             );
         }
 
+        let schema_name = path.file_name().unwrap().to_str().unwrap();
+
+        // Create Database structure in Memory
+        {
+            self.engine.add_database(schema_name);
+        }
+
         let table_path = path.join("tables").canonicalize()?;
         let table_walker = WalkDir::new(table_path).into_iter().filter_map(|e| e.ok());
+
+        let mut loaded_tables: Vec<Table> = vec![];
 
         for table_file in table_walker {
             if Self::is_js_or_ts(&table_file) {
                 let url = ModuleSpecifier::from_file_path(table_file.path()).unwrap();
-                println!("{}", url.as_str());
-                let load_table = self.load_table(url).await?;
-                println!("{}", load_table.2.name);
+                let (specifier, id, table) = self.load_table(url).await?;
+                loaded_tables.push(table);
             }
+        }
+
+        let mut db = self.engine.find_by_name(schema_name.to_string()).unwrap();
+        for table in loaded_tables {
+            db.add_table(table);
         }
 
         Ok(())
@@ -128,7 +144,7 @@ impl SchemeJsRuntime {
         let mod_id = self.js_runtime.load_side_es_module(&specifier).await?;
         let _ = self.js_runtime.mod_evaluate(mod_id).await?;
 
-        let table = {
+        let mut table = {
             let mod_scope = self.js_runtime.get_module_namespace(mod_id)?;
             let scope = &mut self.js_runtime.handle_scope();
             {
@@ -137,9 +153,10 @@ impl SchemeJsRuntime {
                 let func_obj = mod_obj.get(scope, default_function_key.into()).unwrap();
                 let func = v8::Local::<v8::Function>::try_from(func_obj)?;
                 let undefined = v8::undefined(scope);
-                let mut exc = func
-                    .call(scope, undefined.into(), &[]).unwrap();/*
-                    .ok_or_else(Error::msg("Table could not be read"))?*/;
+
+                /// TODO: Handle this error
+                let mut exc = func.call(scope, undefined.into(), &[]).unwrap();                /*
+                    .ok_or_else(Error::msg("Table could not be read"))?*/
 
                 let is_promise = exc.is_promise();
 
@@ -156,6 +173,8 @@ impl SchemeJsRuntime {
                 deno_core::serde_v8::from_v8::<Table>(scope, exc)?
             }
         };
+
+        table.set_module_id(mod_id);
 
         Ok((specifier, mod_id, table))
     }
