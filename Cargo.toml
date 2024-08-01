@@ -1,0 +1,61 @@
+[workspace]
+members = [
+    "./crates/cli",
+    "./crates/base",
+    "./crates/core",
+    "./crates/primitives",
+    "./crates/config",
+    "./crates/workers",
+    "./crates/engine",
+    "./crates/module_loader",
+    "./crates/graph",
+]
+resolver = "2"
+
+[workspace.dependencies]
+toml = "0.8.17"
+serde = "1.0.204"
+deno_ast = "=0.40.0"
+deno_core = "=0.299.0"
+deno_fetch = "0.188.0"
+anyhow = { version = "1.0.57" }
+enum-as-inner = "0.6.0"
+tokio = { version = "1", features = ["full"] }
+walkdir = "2.5.0"
+base64 = "0.21.4"
+deno_semver = "0.5.7"
+eszip = "0.72.2"
+import_map = "=0.20.0"
+cache_control = "=0.2.0"
+chrono = { version = "=0.4.22", default-features = false, features = ["clock"] }
+once_cell = { version = "^1.17.1" }
+reqwest = "0.12.5"
+deno_tls = "=0.150.0"
+deno_lockfile = "0.20.0"
+deno_fs = "=0.73.0"
+deno_graph = "0.80.1"
+deno_cache_dir = "=0.6.1"
+data-url = { version= "=0.3.0" }
+encoding_rs = { version = "=0.8.33" }
+deno_web = "=0.194.0"
+indexmap = { version = "2.0.0", features = ["serde"] }
+thiserror = "1.0.40"
+rand = "0.8.5"
+fs3 = "0.5.0"
+tokio-util = "0.7.4"
+percent-encoding = "=2.3.1"
+rusqlite = "0.32.1"
+glob = "0.3.1"
+faster-hex = "0.9.0"
+path-clean = "1.0.1"
+async-trait = "^0.1.73"
+
+[profile.dind]
+inherits = "dev"
+
+[profile.no-debug-assertions]
+inherits = "dev"
+debug-assertions = false
+
+[profile.release]
+lto = true
