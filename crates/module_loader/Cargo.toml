@@ -1,0 +1,48 @@
+[package]
+name = "schemajs_module_loader"
+version = "0.1.0"
+authors = ["Andres Pirela <andreespirela@outlook.com>"]
+edition = "2021"
+resolver = "2"
+description = "We'll take care of this later"
+license = "MIT"
+
+[dependencies]
+deno_core.workspace = true
+deno_ast = { workspace = true, features = ["transpiling", "bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+cache_control.workspace = true
+chrono.workspace = true
+deno_fetch.workspace = true
+once_cell.workspace = true
+reqwest.workspace = true
+deno_tls.workspace = true
+deno_graph.workspace = true
+deno_cache_dir.workspace = true
+data-url.workspace = true
+base64 = "0.21.7"
+encoding_rs.workspace = true
+log = "0.4.22"
+tokio.workspace = true
+indexmap.workspace = true
+thiserror.workspace = true
+deno_fs.workspace = true
+libc = "0.2.155"
+winapi = "0.3.9"
+rand.workspace = true
+fs3.workspace = true
+tokio-util.workspace = true
+percent-encoding.workspace = true
+deno_web.workspace = true
+rusqlite.workspace = true
+serde = { version = "1.0.204", features = ["derive"] }
+twox-hash = { version = "=1.6.3" }
+ring = "0.17.8"
+faster-hex.workspace = true
+path-clean.workspace = true
+async-trait.workspace = true
+anyhow.workspace = true
+deno_permissions.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+http-body.workspace = true
+hyper-util.workspace = true

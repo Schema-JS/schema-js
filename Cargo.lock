@@ -165,10 +165,12 @@ name = "base"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "deno_ast",
  "deno_core",
  "schemajs_config",
  "schemajs_core",
  "schemajs_engine",
+ "schemajs_module_loader",
  "schemajs_primitives",
  "schemajs_workers",
  "serde",
@@ -574,19 +576,18 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.6.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bbb245d9a3719b5eb2b5195aaaa25108c3c93d1762b181a20fb1af1c7703eaf"
+checksum = "b9fa4989e4c6b0409438e2a68a91e4e02858b0d8ba6e5bc6860af6b0d0f385e8"
 dependencies = [
- "anyhow",
  "deno_media_type",
  "indexmap",
  "log",
  "once_cell",
  "parking_lot",
- "ring",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
  "url",
 ]
@@ -2453,6 +2454,50 @@ dependencies = [
  "deno_core",
  "schemajs_primitives",
  "serde",
+]
+
+[[package]]
+name = "schemajs_module_loader"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "cache_control",
+ "chrono",
+ "data-url",
+ "deno_ast",
+ "deno_cache_dir",
+ "deno_core",
+ "deno_fetch",
+ "deno_fs",
+ "deno_graph",
+ "deno_permissions 0.23.0",
+ "deno_tls 0.150.0",
+ "deno_web",
+ "encoding_rs",
+ "faster-hex",
+ "fs3",
+ "http",
+ "http-body",
+ "http-body-util",
+ "hyper-util",
+ "indexmap",
+ "libc",
+ "log",
+ "once_cell",
+ "path-clean",
+ "percent-encoding",
+ "rand",
+ "reqwest",
+ "ring",
+ "rusqlite",
+ "serde",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "twox-hash",
+ "winapi",
 ]
 
 [[package]]

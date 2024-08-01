@@ -2,7 +2,7 @@ use crate::snapshot;
 use anyhow::{bail, Error, Result};
 use deno_core::_ops::RustToV8;
 use deno_core::url::Url;
-use deno_core::{v8, Extension, JsRuntime, ModuleId, ModuleSpecifier, RuntimeOptions};
+use deno_core::{v8, Extension, JsRuntime, ModuleId, ModuleSpecifier, RuntimeOptions, located_script_name, ModuleCodeString};
 use schemajs_config::SchemeJsConfig;
 use schemajs_engine::engine::SchemeJsEngine;
 use schemajs_primitives::table::Table;
@@ -10,8 +10,10 @@ use schemajs_workers::context::{MainWorkerRuntimeOpts, WorkerRuntimeOpts};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 use walkdir::{DirEntry, WalkDir};
+use schemajs_module_loader::ts_module_loader::TypescriptModuleLoader;
 
 pub struct SchemeJsRuntime {
     pub js_runtime: JsRuntime,
@@ -57,10 +59,21 @@ impl SchemeJsRuntime {
             shared_array_buffer_store: None,
             compiled_wasm_module_store: None,
             startup_snapshot: snapshot::snapshot(),
+            module_loader: Some(Rc::new(TypescriptModuleLoader::default())),
             ..Default::default()
         };
 
         let mut js_runtime = JsRuntime::new(runtime_opts);
+
+
+
+        // Bootstrapping Stage
+        {
+            let script = format!("globalThis.bootstrap()");
+            js_runtime
+                .execute_script(located_script_name!(), ModuleCodeString::from(script))
+                .expect("Failed to execute bootstrap script");
+        }
 
         Ok(Self {
             js_runtime,
@@ -98,7 +111,8 @@ impl SchemeJsRuntime {
 
         for table_file in table_walker {
             if Self::is_js_or_ts(&table_file) {
-                let url = Url::from_directory_path(table_file.path()).unwrap();
+                let url = ModuleSpecifier::from_file_path(table_file.path()).unwrap();
+                println!("{}", url.as_str());
                 let load_table = self.load_table(url).await?;
                 println!("{}", load_table.2.name);
             }
@@ -124,8 +138,8 @@ impl SchemeJsRuntime {
                 let func = v8::Local::<v8::Function>::try_from(func_obj)?;
                 let undefined = v8::undefined(scope);
                 let mut exc = func
-                    .call(scope, undefined.into(), &[])
-                    .ok_or(Error::msg("Table could not be read"))?;
+                    .call(scope, undefined.into(), &[]).unwrap();/*
+                    .ok_or_else(Error::msg("Table could not be read"))?*/;
 
                 let is_promise = exc.is_promise();
 

@@ -14,6 +14,7 @@ mod schema_js_snapshot {
 
     pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
         let extensions: Vec<Extension> = vec![
+            schemajs_core::sjs_core::init_ops_and_esm(),
             schemajs_primitives::sjs_primitives::init_ops_and_esm(),
             schemajs_engine::sjs_engine::init_ops_and_esm(Arc::new(RefCell::new(
                 SchemeJsEngine::new(),

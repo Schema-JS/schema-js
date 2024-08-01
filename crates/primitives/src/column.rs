@@ -2,6 +2,7 @@ use crate::types::DataTypes;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Column {
     pub name: String,
     pub data_type: DataTypes,
