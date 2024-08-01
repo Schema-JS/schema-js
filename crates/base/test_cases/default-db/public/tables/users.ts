@@ -1,5 +1,5 @@
 export default function main() {
-    const { Table, Column } = globalThis.SchemeJS;
+    const { Table, Column } = SchemeJS;
     return new Table("users")
         .addColumn(new Column("id").string())
         .addColumn(new Column("username").string())
