@@ -12,9 +12,6 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 use walkdir::{DirEntry, WalkDir};
-use schemajs_core::cache::CacheSetting;
-use schemajs_graph::emitter::EmitterFactory;
-use schemajs_module_loader::create_module_loader_for_standalone_from_eszip_kind;
 
 pub struct SchemeJsRuntime {
     pub js_runtime: JsRuntime,
@@ -48,11 +45,6 @@ impl SchemeJsRuntime {
 
         let config = SchemeJsConfig::new(config_file.clone())?;
         let engine = Arc::new(RefCell::new(SchemeJsEngine::new()));
-
-        let mut emitter_factory = EmitterFactory::new();
-
-
-        let rt_provider = create_module_loader_for_standalone_from_eszip_kind().await?;
 
         let extensions: Vec<Extension> = vec![
             schemajs_primitives::sjs_primitives::init_ops(),

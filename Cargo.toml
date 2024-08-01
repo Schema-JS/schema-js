@@ -7,8 +7,6 @@ members = [
     "./crates/config",
     "./crates/workers",
     "./crates/engine",
-    "./crates/module_loader",
-    "./crates/graph",
 ]
 resolver = "2"
 

@@ -169,8 +169,6 @@ dependencies = [
  "schemajs_config",
  "schemajs_core",
  "schemajs_engine",
- "schemajs_graph",
- "schemajs_module_loader",
  "schemajs_primitives",
  "schemajs_workers",
  "serde",
@@ -734,17 +732,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_lockfile"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23120f905aec2deed858820113e089551025b74e261c5c404812cd8e61421379"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
 name = "deno_media_type"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -766,25 +753,6 @@ dependencies = [
  "once_cell",
  "rustls-native-certs",
  "rustls-pemfile",
-]
-
-[[package]]
-name = "deno_npm"
-version = "0.21.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9812c781ff6b2e0e45c32ccba9983bce84ecccf6f6a7006b750f8c5c9ac15e30"
-dependencies = [
- "anyhow",
- "async-trait",
- "deno_lockfile",
- "deno_semver",
- "futures",
- "log",
- "monch",
- "serde",
- "serde_json",
- "thiserror",
- "url",
 ]
 
 [[package]]
@@ -1039,27 +1007,6 @@ checksum = "534c5cf6194dfab3db3242765c03bbe257cf92f22b38f6bc0c58d59108a820ba"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "eszip"
-version = "0.72.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "671e5931ba2ba3415b8c410a70b767ca80e1b5b721b428aca2f234f9776cf848"
-dependencies = [
- "anyhow",
- "base64 0.21.7",
- "deno_ast",
- "deno_graph",
- "deno_npm",
- "deno_semver",
- "futures",
- "hashlink 0.8.4",
- "serde",
- "serde_json",
- "sha2",
- "thiserror",
- "url",
 ]
 
 [[package]]
@@ -1348,16 +1295,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 dependencies = [
  "ahash",
- "allocator-api2",
-]
-
-[[package]]
-name = "hashlink"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8094feaf31ff591f651a2664fb9cfd92bba7a60ce3197265e9482ebe753c8f7"
-dependencies = [
- "hashbrown",
 ]
 
 [[package]]
@@ -2319,7 +2256,7 @@ dependencies = [
  "bitflags 2.6.0",
  "fallible-iterator",
  "fallible-streaming-iterator",
- "hashlink 0.9.1",
+ "hashlink",
  "libsqlite3-sys",
  "smallvec",
 ]
@@ -2516,40 +2453,6 @@ dependencies = [
  "deno_core",
  "schemajs_primitives",
  "serde",
-]
-
-[[package]]
-name = "schemajs_graph"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "deno_ast",
- "deno_core",
- "deno_fs",
- "deno_lockfile",
- "deno_semver",
- "deno_web",
- "eszip",
- "glob",
- "import_map",
- "once_cell",
- "schemajs_core",
- "serde",
-]
-
-[[package]]
-name = "schemajs_module_loader"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64 0.21.7",
- "deno_ast",
- "deno_core",
- "eszip",
- "import_map",
- "once_cell",
- "schemajs_core",
- "schemajs_graph",
 ]
 
 [[package]]

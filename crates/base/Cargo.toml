@@ -9,8 +9,6 @@ schemajs_primitives = { version = "0.1.0", path = "../primitives" }
 schemajs_workers = { version = "0.1.0", path = "../workers" }
 schemajs_config = { version = "0.1.0", path = "../config" }
 schemajs_engine = { version = "0.1.0", path = "../engine" }
-schemajs_module_loader = { version = "0.1.0", path = "../module_loader" }
-schemajs_graph = { version = "0.1.0", path = "../graph" }
 schemajs_core = { version = "0.1.0", path = "../core" }
 serde.workspace = true
 anyhow.workspace = true
