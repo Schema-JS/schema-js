@@ -155,8 +155,8 @@ impl SchemeJsRuntime {
                 let undefined = v8::undefined(scope);
 
                 /// TODO: Handle this error
-                let mut exc = func.call(scope, undefined.into(), &[]).unwrap();                /*
-                    .ok_or_else(Error::msg("Table could not be read"))?*/
+                let mut exc = func.call(scope, undefined.into(), &[]).unwrap(); /*
+                                                                                .ok_or_else(Error::msg("Table could not be read"))?*/
 
                 let is_promise = exc.is_promise();
 
