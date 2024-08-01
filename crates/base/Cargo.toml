@@ -1,0 +1,24 @@
+[package]
+name = "base"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+deno_core.workspace = true
+schemajs_primitives = { version = "0.1.0", path = "../primitives" }
+schemajs_workers = { version = "0.1.0", path = "../workers" }
+schemajs_config = { version = "0.1.0", path = "../config" }
+schemajs_engine = { version = "0.1.0", path = "../engine" }
+schemajs_core = { version = "0.1.0", path = "../core" }
+schemajs_module_loader = { version = "0.1.0", path = "../module_loader" }
+serde.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+walkdir.workspace = true
+deno_ast.workspace = true
+
+[build-dependencies]
+schemajs_core = { version = "0.1.0", path = "../core" }
+schemajs_primitives = { version = "0.1.0", path = "../primitives" }
+schemajs_engine = { version = "0.1.0", path = "../engine" }
+deno_core.workspace = true
