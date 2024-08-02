@@ -3,13 +3,15 @@ use schemajs_dirs::create_schema_js_table;
 use schemajs_primitives::table::Table;
 use std::path::PathBuf;
 use std::sync::RwLock;
+use uuid::Uuid;
 
+// TODO: Max shards
 #[derive(Debug)]
 pub struct EngineTable {
-    pub tbl_folder: PathBuf,
+    tbl_folder: PathBuf,
     pub prim_table: Table,
-    pub master_file: RwLock<DataShard>,
-    pub shards: RwLock<Vec<DataShard>>,
+    master_file: RwLock<DataShard>,
+    shards: RwLock<Vec<DataShard>>,
 }
 
 impl EngineTable {
@@ -26,10 +28,25 @@ impl EngineTable {
         }
     }
 
+    fn create_shard(&self) -> DataShard {
+        let shard_path = self.tbl_folder.join(format!("shard_{}", Uuid::new_v4().to_string()));
+        DataShard::new(shard_path, Some(100_000))
+    }
+
     pub fn insert_row(&self, data: Vec<u8>) {
-        self.master_file.write()
-            .unwrap()
-            .insert_item(data)
+        let mut shards = self.shards.read().unwrap();
+        let find_usable_shard = shards.iter().position(|i| i.has_space());
+        let mut shard_index = match find_usable_shard {
+            None => {
+                let shard = self.create_shard();
+                let mut shards = self.shards.write().unwrap();
+                shards.push(shard);
+                self.shards.read().unwrap().len() - 1 // Get a mutable reference to the newly created shard
+            }
+            Some(shard) => shard,
+        };
+
+        self.shards.write().unwrap()[shard_index].insert_item(data)
             .unwrap();
     }
 

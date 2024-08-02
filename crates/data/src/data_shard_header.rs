@@ -24,6 +24,10 @@ impl DataShardHeader {
         }
     }
 
+    pub fn get_max_offsets(&self) -> u64 {
+        self.max_offsets
+    }
+
     pub fn new_from_file(file: &mut File, max_offsets: Option<u64>) -> Self {
         let mut header = DataShardHeader::new(max_offsets.unwrap_or(DEFAULT_MAX_OFFSETS));
 

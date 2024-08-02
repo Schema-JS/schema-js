@@ -2217,6 +2217,7 @@ dependencies = [
  "schemajs_primitives",
  "serde",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

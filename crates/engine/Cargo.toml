@@ -16,3 +16,4 @@ chashmap.workspace = true
 schemajs_data = { version = "0.1.0", path = "../data" }
 schemajs_dirs = { version = "0.1.0", path = "../dirs" }
 tokio.workspace = true
+uuid.workspace = true

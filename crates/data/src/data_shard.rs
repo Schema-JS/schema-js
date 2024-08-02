@@ -3,27 +3,29 @@ use crate::errors::DataShardErrors;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
 #[derive(Debug)]
 pub struct DataShard {
     pub file: RwLock<File>,
+    pub path: PathBuf,
     pub header: RwLock<DataShardHeader>,
 }
 
 impl DataShard {
-    pub fn new<P: AsRef<Path>>(path: P, max_offsets: Option<u64>) -> Self {
+    pub fn new<P: AsRef<Path> + Clone>(path: P, max_offsets: Option<u64>) -> Self {
         let mut file = OpenOptions::new()
             .create(true)
             .read(true)
             .append(true)
-            .open(path)
+            .open(path.clone())
             .expect("Failed to create shard file");
 
         let header = DataShardHeader::new_from_file(&mut file, max_offsets);
 
         DataShard {
+            path: path.as_ref().to_path_buf(),
             file: RwLock::new(file),
             header: RwLock::new(header),
         }
@@ -105,6 +107,19 @@ impl DataShard {
             Ok(_) => Ok(()),
             Err(_) => Err(DataShardErrors::FlushingError),
         }
+    }
+
+    pub fn has_space(&self) -> bool {
+        let header = self.header.read()
+            .unwrap();
+        // Calculate the number of used offsets
+        let used_offsets = header
+            .offsets
+            .iter()
+            .filter(|&&offset| offset != 0).count();
+
+        // Check if the used offsets are less than the maximum allowed offsets
+        header.get_max_offsets() > used_offsets as u64
     }
 }
 

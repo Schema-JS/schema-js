@@ -12,4 +12,4 @@ serde.workspace = true
 tokio.workspace = true
 tempfile.workspace = true
 enum-as-inner.workspace = true
-uuid = { version = "1.10.0", features = ["v4"] }
+uuid.workspace = true
