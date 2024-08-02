@@ -933,6 +933,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fastrand"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fc0510504f03c51ada170672ac806f1f105a88aa97a5281117e1ddc3368e51a"
+
+[[package]]
 name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2044,6 +2050,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "schemajs_data"
+version = "0.1.0"
+dependencies = [
+ "enum-as-inner",
+ "serde",
+ "tempfile",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "schemajs_engine"
 version = "0.1.0"
 dependencies = [
@@ -2837,6 +2854,18 @@ name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
+
+[[package]]
+name = "tempfile"
+version = "3.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85b77fafb263dd9d05cbeac119526425676db3784113aa9295c88498cbf8bff1"
+dependencies = [
+ "cfg-if",
+ "fastrand",
+ "rustix",
+ "windows-sys",
+]
 
 [[package]]
 name = "termcolor"

@@ -8,6 +8,7 @@ members = [
     "./crates/workers",
     "./crates/engine",
     "./crates/module_loader",
+    "./crates/data",
 ]
 resolver = "2"
 
@@ -53,6 +54,7 @@ http = "^1.0.0"
 http-body-util = "^0.1.2"
 http-body = "1.0.0"
 hyper-util = "0.1.6"
+tempfile = "3.10.1"
 
 [profile.dind]
 inherits = "dev"
