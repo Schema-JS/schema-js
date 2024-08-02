@@ -1,21 +1,22 @@
+use crate::errors::DataShardErrors;
+use crate::U64_SIZE;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
 use std::sync::Mutex;
-use crate::errors::DataShardErrors;
-use crate::U64_SIZE;
+use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_MAX_OFFSETS: u64 = 100;
 
 // TODO: Header version
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DataShardHeader {
     max_offsets: u64,
     pub offsets: Vec<u64>,
 }
 
 impl DataShardHeader {
-
     pub fn new(max_offsets: u64) -> Self {
         Self {
             offsets: vec![0; max_offsets as usize],
@@ -39,7 +40,8 @@ impl DataShardHeader {
 
     /// Initializes an empty file with max_offsets and zeroed offsets
     fn initialize_empty_file(&self, file: &mut File) {
-        file.seek(SeekFrom::Start(0)).expect("Failed to seek to start of file");
+        file.seek(SeekFrom::Start(0))
+            .expect("Failed to seek to start of file");
 
         // Header Items
         // Keep this in the order of the struct
@@ -72,12 +74,14 @@ impl DataShardHeader {
 
     /// Reads the header (max_offsets and offsets) from the file
     fn read_header(&mut self, file: &mut File) {
-        file.seek(SeekFrom::Start(0)).expect("Failed to seek to start of file");
+        file.seek(SeekFrom::Start(0))
+            .expect("Failed to seek to start of file");
 
         {
             // Read max_offsets
             let mut max_offsets_bytes = [0u8; U64_SIZE];
-            file.read_exact(&mut max_offsets_bytes).expect("Failed to read max_offsets");
+            file.read_exact(&mut max_offsets_bytes)
+                .expect("Failed to read max_offsets");
             self.max_offsets = u64::from_le_bytes(max_offsets_bytes);
         }
 
@@ -102,7 +106,8 @@ impl DataShardHeader {
 
             // Write the new offset value to the file
             let offset_bytes = value.to_le_bytes();
-            file.write_at(&offset_bytes, offset_position as u64).expect("Failed to write offset to file");
+            file.write_at(&offset_bytes, offset_position as u64)
+                .expect("Failed to write offset to file");
 
             Ok(())
         } else {
@@ -117,7 +122,7 @@ impl DataShardHeader {
     pub fn get_offset_pos(&self, offset: u64) -> Result<usize, DataShardErrors> {
         match self.offsets.iter().position(|&i| i == offset) {
             None => Err(DataShardErrors::UnknownOffset),
-            Some(pos) => Ok(pos)
+            Some(pos) => Ok(pos),
         }
     }
 
@@ -127,8 +132,4 @@ impl DataShardHeader {
 
         max_offsets + offsets_from_pos
     }
-
-
-
-
 }

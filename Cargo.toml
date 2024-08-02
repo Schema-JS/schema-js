@@ -9,12 +9,13 @@ members = [
     "./crates/engine",
     "./crates/module_loader",
     "./crates/data",
+    "./crates/dirs",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 toml = "0.8.17"
-serde = "1.0.204"
+serde = { version = "1.0.204", features = ["derive"] }
 deno_ast = "=0.40.0"
 deno_core = "=0.299.0"
 deno_fetch = "0.188.0"
@@ -55,6 +56,8 @@ http-body-util = "^0.1.2"
 http-body = "1.0.0"
 hyper-util = "0.1.6"
 tempfile = "3.10.1"
+chashmap = "2.2.2"
+dirs = "5.0.1"
 
 [profile.dind]
 inherits = "dev"

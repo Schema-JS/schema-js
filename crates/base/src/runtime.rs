@@ -8,6 +8,7 @@ use deno_core::{
 };
 use schemajs_config::SchemeJsConfig;
 use schemajs_engine::engine::{ArcSchemeJsEngine, SchemeJsEngine};
+use schemajs_engine::engine_table::EngineTable;
 use schemajs_module_loader::ts_module_loader::TypescriptModuleLoader;
 use schemajs_primitives::database::Database;
 use schemajs_primitives::table::Table;
@@ -131,7 +132,7 @@ impl SchemeJsRuntime {
 
         let mut db = self.engine.find_by_name(schema_name.to_string()).unwrap();
         for table in loaded_tables {
-            db.add_table(table);
+            db.add_table(EngineTable::new(schema_name, table));
         }
 
         Ok(())

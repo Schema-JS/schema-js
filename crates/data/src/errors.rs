@@ -4,5 +4,5 @@ use enum_as_inner::EnumAsInner;
 pub enum DataShardErrors {
     OutOfPositions,
     UnknownOffset,
-    FlushingError
+    FlushingError,
 }

@@ -12,3 +12,7 @@ deno_core.workspace = true
 schemajs_primitives = { version = "0.1.0", path = "../primitives" }
 serde.workspace = true
 anyhow.workspace = true
+chashmap.workspace = true
+schemajs_data = { version = "0.1.0", path = "../data" }
+schemajs_dirs = { version = "0.1.0", path = "../dirs" }
+tokio.workspace = true
