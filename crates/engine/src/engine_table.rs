@@ -50,5 +50,17 @@ impl EngineTable {
             .unwrap();
     }
 
+    fn reconcile(&self) {
+        let mut shards = self.shards.write().unwrap();
+        let master_writer = self.master_file.write().unwrap();;
+        for shard in shards.iter() {
+            let header = shard.header.read().unwrap();
+            header.offsets.iter().for_each(|&item_offset| {
+                let binary_item = shard.read_item(item_offset).unwrap();
+                master_writer.insert_item(binary_item).unwrap();
+            });
+        }
+        shards.clear();
+    }
 
 }

@@ -5,14 +5,17 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
 use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 pub const DEFAULT_MAX_OFFSETS: u64 = 100;
+pub const UUID_BYTE_LEN: u64 = 16;
 
 // TODO: Header version
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataShardHeader {
     max_offsets: u64,
+    pub id: Uuid,
     pub offsets: Vec<u64>,
 }
 
@@ -21,6 +24,7 @@ impl DataShardHeader {
         Self {
             offsets: vec![0; max_offsets as usize],
             max_offsets,
+            id: Uuid::new_v4()
         }
     }
 
@@ -51,9 +55,10 @@ impl DataShardHeader {
         // Keep this in the order of the struct
         let max_offsets_size = U64_SIZE;
         let offsets_size = ((self.max_offsets as usize) * U64_SIZE);
+        let id_len = UUID_BYTE_LEN as usize;
 
         // Calculate header size
-        let header_size = max_offsets_size + offsets_size;
+        let header_size = max_offsets_size + offsets_size + id_len;
 
         // Create a buffer for the header
         let mut buffer = Vec::with_capacity(header_size);
@@ -62,6 +67,12 @@ impl DataShardHeader {
             // Write max_offsets to the buffer
             let max_offsets_bytes = (self.max_offsets as u64).to_le_bytes();
             buffer.extend_from_slice(&max_offsets_bytes);
+        }
+
+        {
+            // Write shard id
+            let id_bytes = self.id.to_bytes_le();
+            buffer.extend_from_slice(&id_bytes);
         }
 
         {
@@ -87,6 +98,13 @@ impl DataShardHeader {
             file.read_exact(&mut max_offsets_bytes)
                 .expect("Failed to read max_offsets");
             self.max_offsets = u64::from_le_bytes(max_offsets_bytes);
+        }
+
+        {
+            let mut max_offsets_bytes = [0u8; UUID_BYTE_LEN as usize];
+            file.read_exact(&mut max_offsets_bytes)
+                .expect("Failed to read max_offsets");
+            self.id = Uuid::from_bytes_le(max_offsets_bytes);
         }
 
         {
@@ -132,8 +150,9 @@ impl DataShardHeader {
 
     fn calculate_offset_pos(&self, position: usize) -> usize {
         let max_offsets = U64_SIZE;
+        let id_len = UUID_BYTE_LEN as usize;
         let offsets_from_pos = position * U64_SIZE;
 
-        max_offsets + offsets_from_pos
+        max_offsets + id_len + offsets_from_pos
     }
 }

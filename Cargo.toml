@@ -58,7 +58,7 @@ hyper-util = "0.1.6"
 tempfile = "3.10.1"
 chashmap = "2.2.2"
 dirs = "5.0.1"
-uuid = { version = "1.10.0", features = ["v4"] }
+uuid = { version = "1.10.0", features = ["v4", "serde"] }
 
 [profile.dind]
 inherits = "dev"

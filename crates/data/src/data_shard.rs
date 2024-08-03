@@ -27,7 +27,7 @@ impl DataShard {
         DataShard {
             path: path.as_ref().to_path_buf(),
             file: RwLock::new(file),
-            header: RwLock::new(header),
+            header: RwLock::new(header)
         }
     }
 
@@ -168,7 +168,7 @@ mod test {
         assert!(item.is_err());
         assert!(item.err().unwrap().is_out_of_positions());
 
-        let res: Vec<u64> = vec![88, 99, 112, 121, 126, 130, 131, 135, 140, 158];
+        let res: Vec<u64> = vec![104, 115, 128, 137, 142, 146, 147, 151, 156, 174];
         assert_eq!(res, data_shard.header.read().unwrap().offsets);
     }
 
@@ -198,7 +198,7 @@ mod test {
         }
 
         let new_data_shard = DataShard::new(file_path.clone(), Some(10));
-        let res: Vec<u64> = vec![88, 99, 112, 121, 126, 130, 131, 135, 140, 158];
+        let res: Vec<u64> = vec![104, 115, 128, 137, 142, 146, 147, 151, 156, 174];
         assert_eq!(res, new_data_shard.header.read().unwrap().offsets);
     }
 
