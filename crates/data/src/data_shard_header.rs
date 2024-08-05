@@ -1,10 +1,10 @@
 use crate::errors::DataShardErrors;
 use crate::U64_SIZE;
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
 use std::sync::Mutex;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const DEFAULT_MAX_OFFSETS: u64 = 100;
@@ -20,11 +20,11 @@ pub struct DataShardHeader {
 }
 
 impl DataShardHeader {
-    pub fn new(max_offsets: u64) -> Self {
+    pub fn new(max_offsets: u64, uuid: Option<Uuid>) -> Self {
         Self {
             offsets: vec![0; max_offsets as usize],
             max_offsets,
-            id: Uuid::new_v4()
+            id: uuid.unwrap_or_else(|| Uuid::new_v4()),
         }
     }
 
@@ -32,8 +32,8 @@ impl DataShardHeader {
         self.max_offsets
     }
 
-    pub fn new_from_file(file: &mut File, max_offsets: Option<u64>) -> Self {
-        let mut header = DataShardHeader::new(max_offsets.unwrap_or(DEFAULT_MAX_OFFSETS));
+    pub fn new_from_file(file: &mut File, max_offsets: Option<u64>, uuid: Option<Uuid>) -> Self {
+        let mut header = DataShardHeader::new(max_offsets.unwrap_or(DEFAULT_MAX_OFFSETS), uuid);
 
         // Check if the file is empty
         let metadata = file.metadata().expect("Failed to get file metadata");
@@ -101,10 +101,10 @@ impl DataShardHeader {
         }
 
         {
-            let mut max_offsets_bytes = [0u8; UUID_BYTE_LEN as usize];
-            file.read_exact(&mut max_offsets_bytes)
-                .expect("Failed to read max_offsets");
-            self.id = Uuid::from_bytes_le(max_offsets_bytes);
+            let mut id_bytes = [0u8; UUID_BYTE_LEN as usize];
+            file.read_exact(&mut id_bytes)
+                .expect("Failed to read id_bytes");
+            self.id = Uuid::from_bytes_le(id_bytes);
         }
 
         {

@@ -27,12 +27,12 @@ impl SchemeJsEngine {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
+    use crate::engine::SchemeJsEngine;
+    use crate::engine_table::EngineTable;
     use schemajs_primitives::column::Column;
     use schemajs_primitives::table::Table;
     use schemajs_primitives::types::DataTypes;
-    use crate::engine::SchemeJsEngine;
-    use crate::engine_table::EngineTable;
+    use std::collections::HashMap;
 
     #[tokio::test]
     pub async fn test_db_engine() {
@@ -43,12 +43,15 @@ mod test {
         assert_eq!(db.db_folder.exists(), true);
 
         let mut cols: HashMap<String, Column> = HashMap::new();
-        cols.insert("id".to_string(), Column {
-            name: "id".to_string(),
-            data_type: DataTypes::String,
-            default_value: None,
-            comment: None,
-        });
+        cols.insert(
+            "id".to_string(),
+            Column {
+                name: "id".to_string(),
+                data_type: DataTypes::String,
+                default_value: None,
+                comment: None,
+            },
+        );
 
         let table = Table {
             name: "users".to_string(),
@@ -61,7 +64,6 @@ mod test {
         let users = db.get_table("users").unwrap();
         assert_eq!(users.tbl_folder.exists(), true);
 
-        users.insert_row(b"1".to_vec());
+        users.temp_shards.insert_row(b"1".to_vec());
     }
-
 }
