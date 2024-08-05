@@ -48,14 +48,16 @@ impl TempMapShard {
         shards.get(&shard_key).unwrap().insert_item(data).unwrap();
     }
 
-    pub fn reconcile(&self, master: &MapShard) {
+    pub fn reconcile(&self, master: &mut MapShard) {
         let mut shards = self.temp_shards.write().unwrap();
-        let master_writer = master.current_master_shard.write().unwrap();
         for (_id, shard) in shards.iter() {
             let header = shard.header.read().unwrap();
             header.offsets.iter().for_each(|&item_offset| {
                 let binary_item = shard.read_item(item_offset).unwrap();
-                master_writer.insert_item(binary_item).unwrap();
+                master
+                    .current_master_shard
+                    .insert_item(binary_item)
+                    .unwrap();
             });
         }
         shards.clear();

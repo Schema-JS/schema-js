@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::{RefCell, RefMut};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use walkdir::{DirEntry, WalkDir};
 
 pub struct SchemeJsRuntime {
@@ -25,7 +25,7 @@ pub struct SchemeJsRuntime {
     pub config: WorkerRuntimeOpts,
     pub config_file: PathBuf,
     pub current_folder: PathBuf,
-    pub engine: SchemeJsEngine,
+    pub engine: Arc<RwLock<SchemeJsEngine>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,7 +83,7 @@ impl SchemeJsRuntime {
             config: WorkerRuntimeOpts::Main(MainWorkerRuntimeOpts { config }),
             config_file,
             current_folder: folder_path,
-            engine: SchemeJsEngine::new(),
+            engine: Arc::new(RwLock::new(SchemeJsEngine::new())),
         })
     }
 
@@ -114,7 +114,7 @@ impl SchemeJsRuntime {
 
         // Create Database structure in Memory
         {
-            self.engine.add_database(schema_name);
+            self.engine.write().unwrap().add_database(schema_name);
         }
 
         let table_path = path.join("tables").canonicalize()?;
@@ -130,7 +130,8 @@ impl SchemeJsRuntime {
             }
         }
 
-        let mut db = self.engine.find_by_name(schema_name.to_string()).unwrap();
+        let mut engine_writer = self.engine.write().unwrap();
+        let mut db = engine_writer.find_by_name(schema_name.to_string()).unwrap();
         for table in loaded_tables {
             db.add_table(EngineTable::new(schema_name, table));
         }

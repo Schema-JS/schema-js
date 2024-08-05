@@ -137,6 +137,14 @@ impl DataShardHeader {
         }
     }
 
+    pub fn has_space(&self) -> bool {
+        // Calculate the number of used offsets
+        let used_offsets = self.offsets.iter().filter(|&&offset| offset != 0).count();
+
+        // Check if the used offsets are less than the maximum allowed offsets
+        self.get_max_offsets() > used_offsets as u64
+    }
+
     pub fn get_next_available_pos(&self) -> Option<usize> {
         self.offsets.iter().position(|&offset| offset == 0)
     }

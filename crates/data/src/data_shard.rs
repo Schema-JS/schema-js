@@ -94,33 +94,35 @@ impl DataShard {
     }
 
     pub fn insert_item(&self, item: Vec<u8>) -> Result<(), DataShardErrors> {
-        let mut header_write = self.header.write().unwrap();
-        let mut file = self.file.write().unwrap();
+        let has_space = { self.has_space() };
+        if has_space {
+            let mut header_write = self.header.write().unwrap();
+            let mut file = self.file.write().unwrap();
 
-        // Calculate the current end of the file
-        let end_of_file = file
-            .seek(SeekFrom::End(0))
-            .expect("Failed to seek to end of file");
+            // Calculate the current end of the file
+            let end_of_file = file
+                .seek(SeekFrom::End(0))
+                .expect("Failed to seek to end of file");
 
-        // Write the item to the file
-        file.write_all(&item).expect("Failed to write item to file");
+            // Write the item to the file
+            file.write_all(&item).expect("Failed to write item to file");
 
-        // Update the header with the new offset
-        header_write.add_next_offset(&mut file, end_of_file)?;
+            // Update the header with the new offset
+            header_write.add_next_offset(&mut file, end_of_file)?;
 
-        match file.flush() {
-            Ok(_) => Ok(()),
-            Err(_) => Err(DataShardErrors::FlushingError),
+            match file.flush() {
+                Ok(_) => Ok(()),
+                Err(_) => Err(DataShardErrors::FlushingError),
+            }
+        } else {
+            Err(DataShardErrors::OutOfPositions)
         }
     }
 
     pub fn has_space(&self) -> bool {
         let header = self.header.read().unwrap();
-        // Calculate the number of used offsets
-        let used_offsets = header.offsets.iter().filter(|&&offset| offset != 0).count();
 
-        // Check if the used offsets are less than the maximum allowed offsets
-        header.get_max_offsets() > used_offsets as u64
+        header.has_space()
     }
 
     pub fn get_id(&self) -> String {
