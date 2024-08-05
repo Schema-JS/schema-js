@@ -10,7 +10,7 @@ pub struct TempMapShard {
     folder: PathBuf,
     prefix: String,
     max_offsets: Option<u64>,
-    temp_shards: RwLock<HashMap<String, DataShard>>,
+    pub temp_shards: RwLock<HashMap<String, DataShard>>,
 }
 
 impl TempMapShard {

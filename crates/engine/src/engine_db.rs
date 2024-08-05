@@ -28,4 +28,8 @@ impl EngineDb {
     pub fn get_table(&mut self, name: &str) -> Option<&mut EngineTable> {
         self.tables.get_mut(name)
     }
+
+    pub fn get_table_ref(&self, name: &str) -> Option<&EngineTable> {
+        self.tables.get(name)
+    }
 }
