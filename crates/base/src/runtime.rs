@@ -218,13 +218,11 @@ mod test {
         {
             let mut create_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
                 config_path: PathBuf::from("./test_cases/default-db"),
-                data_path: Some(data_path),
+                data_path: Some(data_path.clone()),
             })
             .await?;
 
-            create_rt.load().await.unwrap();
-
-            let num_inserts = 1;
+            let num_inserts = 25_000;
             let mut script = String::new();
 
             for i in 0..num_inserts {
@@ -244,6 +242,8 @@ mod test {
         }
         let elapsed = now.elapsed();
         println!("Elapsed: {:.5?}", elapsed);
+
+        std::fs::remove_dir_all(data_path).unwrap();
 
         Ok(())
     }

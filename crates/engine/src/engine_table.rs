@@ -10,6 +10,7 @@ use schemajs_primitives::table::Table;
 use schemajs_primitives::types::DataTypes;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use schemajs_data::temp_offset_types::TempOffsetTypes;
 
 #[derive(Debug)]
 pub struct EngineTable {
@@ -28,7 +29,7 @@ impl EngineTable {
             tbl_folder: table_folder_path.clone(),
             prim_table: table,
             data: RwLock::new(MapShard::new(table_folder_path.clone(), "data_", None)),
-            temp_shards: TempMapShard::new(table_folder_path, Some(500_000), "datatemp-"),
+            temp_shards: TempMapShard::new(table_folder_path, TempOffsetTypes::Custom(Some(1000)), "datatemp-"),
             serializer: Arc::new(BorshRowSerializer::default()),
         }
     }

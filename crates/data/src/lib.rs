@@ -4,6 +4,7 @@ mod errors;
 pub mod map_shard;
 pub mod temp_map_shard;
 pub mod utils;
+pub mod temp_offset_types;
 
 // https://doc.rust-lang.org/std/mem/fn.size_of.html
 pub const U64_SIZE: usize = 8;
