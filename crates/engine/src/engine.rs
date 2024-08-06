@@ -180,8 +180,8 @@ mod test {
 
             let reader = temp_shards.temp_shards.read().unwrap();
             let shards = reader.iter().next().unwrap();
-            let first_item = shards.1.read_item_from_index(0).unwrap();
-            let second_item = shards.1.read_item_from_index(1).unwrap();
+            let first_item = shards.read_item_from_index(0).unwrap();
+            let second_item = shards.read_item_from_index(1).unwrap();
 
             let mut items: Vec<Vec<u8>> = vec![first_item, second_item];
 

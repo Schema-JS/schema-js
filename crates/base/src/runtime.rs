@@ -243,7 +243,7 @@ mod test {
         let elapsed = now.elapsed();
         println!("Elapsed: {:.5?}", elapsed);
 
-        std::fs::remove_dir_all(data_path).unwrap();
+        /*std::fs::remove_dir_all(data_path).unwrap();*/
 
         Ok(())
     }

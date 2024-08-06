@@ -11,7 +11,7 @@ pub enum RowSerializationError {
     DeserializationError(String),
 }
 
-pub trait RowSerializer: std::fmt::Debug {
+pub trait RowSerializer: std::fmt::Debug + Send + Sync + 'static {
     fn serialize(&self, value: &Value) -> Result<Vec<u8>, RowSerializationError>;
     fn deserialize(&self, data: &[u8]) -> Result<Value, RowSerializationError>;
 }
