@@ -24,18 +24,23 @@ pub struct SchemeJsRuntime {
     pub js_runtime: JsRuntime,
     pub config: WorkerRuntimeOpts,
     pub config_file: PathBuf,
+    pub data_path_folder: Option<PathBuf>,
     pub current_folder: PathBuf,
-    pub engine: Arc<RwLock<SchemeJsEngine>>,
+    pub engine: Arc<SchemeJsEngine>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkerContextInitOpts {
     pub config_path: PathBuf,
+    pub data_path: Option<PathBuf>,
 }
 
 impl SchemeJsRuntime {
     pub async fn new(opts: WorkerContextInitOpts) -> Result<Self> {
-        let WorkerContextInitOpts { config_path } = opts;
+        let WorkerContextInitOpts {
+            config_path,
+            data_path,
+        } = opts;
 
         // Determine the base path by joining the current directory with the config path
         let base_path = std::env::current_dir()?.join(&config_path);
@@ -56,6 +61,7 @@ impl SchemeJsRuntime {
         let extensions: Vec<Extension> = vec![
             schemajs_primitives::sjs_primitives::init_ops(),
             schemajs_core::sjs_core::init_ops(),
+            schemajs_engine::sjs_engine::init_ops(),
         ];
 
         let runtime_opts = RuntimeOptions {
@@ -78,23 +84,51 @@ impl SchemeJsRuntime {
                 .expect("Failed to execute bootstrap script");
         }
 
+        let config_opts = WorkerRuntimeOpts::Main(MainWorkerRuntimeOpts { config });
+        let mut engine = SchemeJsEngine::new(data_path.clone());
+        Self::load(&config_opts, &mut js_runtime, &folder_path, &mut engine)
+            .await
+            .unwrap();
+
+        let engine = Arc::new(engine);
+        {
+            // Put reference to engine
+            let op_state_rc = js_runtime.op_state();
+            let mut op_state = op_state_rc.borrow_mut();
+            op_state.put::<Arc<SchemeJsEngine>>(engine.clone());
+        }
+
         Ok(Self {
             js_runtime,
-            config: WorkerRuntimeOpts::Main(MainWorkerRuntimeOpts { config }),
+            config: config_opts,
             config_file,
             current_folder: folder_path,
-            engine: Arc::new(RwLock::new(SchemeJsEngine::new())),
+            engine,
+            data_path_folder: data_path.clone(),
         })
     }
 
-    pub async fn load(&mut self) -> Result<()> {
-        match &self.config {
+    pub async fn load(
+        config: &WorkerRuntimeOpts,
+        js_runtime: &mut JsRuntime,
+        current_folder: &PathBuf,
+        engine: &mut SchemeJsEngine,
+    ) -> Result<()> {
+        match &config {
             WorkerRuntimeOpts::Main(conf) => {
                 let databases = conf.config.workspace.databases.clone();
 
                 for database_path in databases {
-                    let path = self.current_folder.join(&database_path);
-                    self.load_database_schema(&path).await?;
+                    let path = current_folder.join(&database_path);
+                    let (scheme_name, table_specifiers) = engine.load_database_schema(&path)?;
+                    let mut tables = vec![];
+                    for table_specifier in table_specifiers {
+                        let (_, _, tbl) =
+                            Self::load_table(js_runtime, table_specifier).await.unwrap();
+                        tables.push(tbl);
+                    }
+
+                    engine.register_tables(scheme_name.as_str(), tables);
                 }
 
                 Ok(())
@@ -102,53 +136,16 @@ impl SchemeJsRuntime {
         }
     }
 
-    async fn load_database_schema(&mut self, path: &PathBuf) -> Result<()> {
-        if !path.exists() {
-            bail!(
-                "Trying to access a database schema that does not exist: {}",
-                path.to_string_lossy()
-            );
-        }
-
-        let schema_name = path.file_name().unwrap().to_str().unwrap();
-
-        // Create Database structure in Memory
-        {
-            self.engine.write().unwrap().add_database(schema_name);
-        }
-
-        let table_path = path.join("tables").canonicalize()?;
-        let table_walker = WalkDir::new(table_path).into_iter().filter_map(|e| e.ok());
-
-        let mut loaded_tables: Vec<Table> = vec![];
-
-        for table_file in table_walker {
-            if Self::is_js_or_ts(&table_file) {
-                let url = ModuleSpecifier::from_file_path(table_file.path()).unwrap();
-                let (specifier, id, table) = self.load_table(url).await?;
-                loaded_tables.push(table);
-            }
-        }
-
-        let mut engine_writer = self.engine.write().unwrap();
-        let mut db = engine_writer.find_by_name(schema_name.to_string()).unwrap();
-        for table in loaded_tables {
-            db.add_table(EngineTable::new(schema_name, table));
-        }
-
-        Ok(())
-    }
-
     async fn load_table(
-        &mut self,
+        js_runtime: &mut JsRuntime,
         specifier: ModuleSpecifier,
     ) -> Result<(ModuleSpecifier, ModuleId, Table)> {
-        let mod_id = self.js_runtime.load_side_es_module(&specifier).await?;
-        let _ = self.js_runtime.mod_evaluate(mod_id).await?;
+        let mod_id = js_runtime.load_side_es_module(&specifier).await?;
+        let _ = js_runtime.mod_evaluate(mod_id).await?;
 
         let mut table = {
-            let mod_scope = self.js_runtime.get_module_namespace(mod_id)?;
-            let scope = &mut self.js_runtime.handle_scope();
+            let mod_scope = js_runtime.get_module_namespace(mod_id)?;
+            let scope = &mut js_runtime.handle_scope();
             {
                 let mod_obj = mod_scope.open(scope).to_object(scope).unwrap();
                 let default_function_key = v8::String::new(scope, "default").unwrap();
@@ -180,24 +177,19 @@ impl SchemeJsRuntime {
 
         Ok((specifier, mod_id, table))
     }
-
-    fn is_js_or_ts(entry: &DirEntry) -> bool {
-        entry
-            .path()
-            .extension()
-            .map_or(false, |ext| ext == "js" || ext == "ts")
-    }
 }
 
 #[cfg(test)]
 mod test {
     use crate::runtime::{SchemeJsRuntime, WorkerContextInitOpts};
+    use deno_core::{located_script_name, serde_json};
     use std::path::PathBuf;
 
     #[tokio::test]
     pub async fn test_runtime_config_as_folder() -> anyhow::Result<()> {
         let create_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
             config_path: PathBuf::from("./test_cases/default-db"),
+            data_path: None,
         })
         .await?;
 
@@ -218,9 +210,49 @@ mod test {
     }
 
     #[tokio::test]
+    pub async fn test_runtime_insert() -> anyhow::Result<()> {
+        let data_path = std::env::current_dir()
+            .unwrap()
+            .join(PathBuf::from("./test_cases/data"));
+        let now = std::time::Instant::now();
+        {
+            let mut create_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
+                config_path: PathBuf::from("./test_cases/default-db"),
+                data_path: Some(data_path),
+            })
+            .await?;
+
+            create_rt.load().await.unwrap();
+
+            let num_inserts = 1;
+            let mut script = String::new();
+
+            for i in 0..num_inserts {
+                script.push_str(&format!(
+                    r#"globalThis.SchemeJS.insert("{}", "{}", {});"#,
+                    "public",
+                    "users",
+                    serde_json::json!({
+                        "id": "ABCD"
+                    })
+                    .to_string()
+                ));
+            }
+            create_rt
+                .js_runtime
+                .execute_script(located_script_name!(), script)?;
+        }
+        let elapsed = now.elapsed();
+        println!("Elapsed: {:.5?}", elapsed);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     pub async fn test_runtime_config_as_file() -> anyhow::Result<()> {
         let create_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
             config_path: PathBuf::from("./test_cases/default-db/CustomSchemeJS.toml"),
+            data_path: None,
         })
         .await?;
 

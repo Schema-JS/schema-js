@@ -5,6 +5,7 @@ export class Column {
     public dataType: DataTypes;
     public defaultValue?: string;
     public comment?: string;
+    public required: boolean = false;
 
     constructor(name: string, dataType?: DataTypes) {
         this.name = name;
@@ -21,8 +22,13 @@ export class Column {
         return this;
     }
 
+    require(data: boolean) {
+        this.required = data;
+        return this;
+    }
+
     withComment(comment: string) {
-        this.comment_ = comment;
+        this.comment = comment;
         return this;
     }
 
@@ -43,7 +49,7 @@ export class Column {
             throw new Error(`Default value does not match column type. ${this.name} is of type '${mapEntry.type}'.`);
         }
 
-        this.defaultValue_ = String(val);
+        this.defaultValue = String(val);
         return this;
     }
 

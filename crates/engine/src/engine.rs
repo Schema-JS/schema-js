@@ -1,19 +1,72 @@
 use crate::engine_db::EngineDb;
+use crate::engine_table::EngineTable;
+use crate::utils::fs::is_js_or_ts;
+use anyhow::bail;
+use deno_core::{ModuleId, ModuleSpecifier};
 use schemajs_dirs::create_scheme_js_folder;
+use schemajs_primitives::table::Table;
 use std::cell::RefCell;
+use std::future::Future;
+use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
+use walkdir::WalkDir;
 
 pub type ArcSchemeJsEngine = Arc<RefCell<SchemeJsEngine>>;
 
 pub struct SchemeJsEngine {
     pub databases: Vec<EngineDb>,
+    pub data_path_dir: Option<PathBuf>,
 }
 
 impl SchemeJsEngine {
-    pub fn new() -> Self {
-        create_scheme_js_folder();
+    pub fn new(data_path: Option<PathBuf>) -> Self {
+        create_scheme_js_folder(data_path.clone());
 
-        Self { databases: vec![] }
+        Self {
+            databases: vec![],
+            data_path_dir: data_path,
+        }
+    }
+
+    pub fn load_database_schema(
+        &mut self,
+        path: &PathBuf,
+    ) -> anyhow::Result<(String, Vec<ModuleSpecifier>)> {
+        if !path.exists() {
+            bail!(
+                "Trying to access a database schema that does not exist: {}",
+                path.to_string_lossy()
+            );
+        }
+
+        let schema_name = path.file_name().unwrap().to_str().unwrap();
+
+        {
+            self.add_database(schema_name);
+        }
+
+        let table_path = path.join("tables").canonicalize()?;
+        let table_walker = WalkDir::new(table_path).into_iter().filter_map(|e| e.ok());
+
+        let mut table_specifiers = vec![];
+
+        for table_file in table_walker {
+            if is_js_or_ts(&table_file) {
+                let url = ModuleSpecifier::from_file_path(table_file.path()).unwrap();
+                table_specifiers.push(url);
+            }
+        }
+
+        Ok((schema_name.to_string(), table_specifiers))
+    }
+
+    pub fn register_tables(&mut self, schema_name: &str, loaded_tables: Vec<Table>) {
+        let data_path_dir = self.data_path_dir.clone();
+        let mut db = self.find_by_name(schema_name.to_string()).unwrap();
+        for table in loaded_tables {
+            db.add_table(EngineTable::new(data_path_dir.clone(), schema_name, table));
+        }
     }
 
     pub fn find_by_name(&mut self, name: String) -> Option<&mut EngineDb> {
@@ -25,7 +78,8 @@ impl SchemeJsEngine {
     }
 
     pub fn add_database(&mut self, name: &str) {
-        self.databases.push(EngineDb::new(name))
+        self.databases
+            .push(EngineDb::new(self.data_path_dir.clone(), name))
     }
 }
 
@@ -42,7 +96,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_db_engine() {
-        let db_engine = Arc::new(RwLock::new(SchemeJsEngine::new()));
+        let db_engine = Arc::new(RwLock::new(SchemeJsEngine::new(None)));
 
         // Add database
         {
@@ -66,6 +120,7 @@ mod test {
                         name: "id".to_string(),
                         data_type: DataTypes::String,
                         default_value: None,
+                        required: false,
                         comment: None,
                     },
                 );
@@ -78,7 +133,7 @@ mod test {
 
                 let mut writer = db_engine.write().unwrap();
                 let mut db = writer.find_by_name("rust-test".to_string()).unwrap();
-                db.add_table(EngineTable::new("rust-test", table));
+                db.add_table(EngineTable::new(None, "rust-test", table));
             }
 
             {

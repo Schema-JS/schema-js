@@ -11,8 +11,8 @@ pub struct EngineDb {
 }
 
 impl EngineDb {
-    pub fn new(name: &str) -> Self {
-        let db_folder = create_scheme_js_db(name);
+    pub fn new(base_path: Option<PathBuf>, name: &str) -> Self {
+        let db_folder = create_scheme_js_db(base_path, name);
 
         EngineDb {
             name: name.to_string(),

@@ -12,10 +12,9 @@ fn main() {
     let local = tokio::task::LocalSet::new();
     let res: Result<(), Error> = local.block_on(&runtime, async {
         let mut rt = base::runtime::SchemeJsRuntime::new(WorkerContextInitOpts {
-            config_path: PathBuf::from("/Users/andrespirela/Documents/workspace/pirela/schema-js/crates/base/test_cases/default-db/SchemeJS.toml")
+            config_path: PathBuf::from("/Users/andrespirela/Documents/workspace/pirela/schema-js/crates/base/test_cases/default-db/SchemeJS.toml"),
+            data_path: None,
         }).await.unwrap();
-
-        rt.load().await.unwrap();
 
         Ok(())
     });

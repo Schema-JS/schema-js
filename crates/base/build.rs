@@ -16,6 +16,7 @@ mod schema_js_snapshot {
         let extensions: Vec<Extension> = vec![
             schemajs_core::sjs_core::init_ops_and_esm(),
             schemajs_primitives::sjs_primitives::init_ops_and_esm(),
+            schemajs_engine::sjs_engine::init_ops_and_esm(),
         ];
         let snapshot = create_snapshot(
             CreateSnapshotOptions {

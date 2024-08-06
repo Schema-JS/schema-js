@@ -7,6 +7,7 @@ pub struct Column {
     pub name: String,
     pub data_type: DataTypes,
     pub default_value: Option<String>,
+    pub required: bool,
     pub comment: Option<String>,
 }
 
@@ -17,6 +18,7 @@ impl Column {
             data_type,
             default_value: None,
             comment: None,
+            required: false,
         }
     }
 
