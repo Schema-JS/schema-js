@@ -5,4 +5,6 @@ pub enum DataShardErrors {
     OutOfPositions,
     UnknownOffset,
     FlushingError,
+    ErrorReadingByteRange,
+    ErrorAddingHeaderOffset,
 }

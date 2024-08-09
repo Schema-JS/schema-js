@@ -3,8 +3,8 @@ use anyhow::{bail, Error, Result};
 use deno_core::_ops::RustToV8;
 use deno_core::url::Url;
 use deno_core::{
-    located_script_name, v8, Extension, JsRuntime, ModuleCodeString, ModuleId, ModuleSpecifier,
-    RuntimeOptions,
+    located_script_name, serde_v8, v8, Extension, JsRuntime, ModuleCodeString, ModuleId,
+    ModuleSpecifier, RuntimeOptions,
 };
 use schemajs_config::SchemeJsConfig;
 use schemajs_engine::engine::{ArcSchemeJsEngine, SchemeJsEngine};
@@ -182,7 +182,7 @@ impl SchemeJsRuntime {
 #[cfg(test)]
 mod test {
     use crate::runtime::{SchemeJsRuntime, WorkerContextInitOpts};
-    use deno_core::{located_script_name, serde_json};
+    use deno_core::{located_script_name, serde_json, v8};
     use std::path::PathBuf;
 
     #[tokio::test]
@@ -243,7 +243,7 @@ mod test {
         let elapsed = now.elapsed();
         println!("Elapsed: {:.5?}", elapsed);
 
-        /*std::fs::remove_dir_all(data_path).unwrap();*/
+        std::fs::remove_dir_all(data_path).unwrap();
 
         Ok(())
     }

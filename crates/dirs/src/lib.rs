@@ -46,3 +46,17 @@ pub fn create_schema_js_table(
 
     path
 }
+
+pub fn create_indx_folder(base_path: Option<PathBuf>, db_name: &str, table_name: &str) -> PathBuf {
+    let path = get_base_path(base_path)
+        .join("dbs")
+        .join(db_name)
+        .join(table_name)
+        .join("indxs");
+
+    if !path.exists() {
+        std::fs::create_dir(path.clone()).unwrap();
+    }
+
+    path
+}

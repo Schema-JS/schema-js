@@ -13,3 +13,5 @@ tokio.workspace = true
 tempfile.workspace = true
 enum-as-inner.workspace = true
 uuid.workspace = true
+borsh.workspace = true
+memmap2.workspace = true

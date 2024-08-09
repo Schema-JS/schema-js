@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 pub struct RuntimePool {
     pub scheme_js_config: PathBuf,
     pub data_folder: Option<PathBuf>,
-    pub engine: Arc<RwLock<SchemeJsEngine>>,
+    pub engine: Arc<SchemeJsEngine>,
     pub max_capacity: u64,
     pub min_capacity: u64,
     pub workers: RwLock<Vec<SchemeJsRuntime>>,
@@ -26,7 +26,7 @@ impl RuntimePool {
         Self {
             scheme_js_config,
             data_folder,
-            engine: Arc::new(RwLock::new(engine)),
+            engine: Arc::new(engine),
             max_capacity: capacity,
             workers: RwLock::new(Vec::with_capacity(capacity as usize)),
             min_capacity,
