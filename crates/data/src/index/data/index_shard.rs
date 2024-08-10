@@ -4,6 +4,7 @@ use crate::index::data::index_shard_header::IndexShardHeader;
 use crate::index::types::IndexKey;
 use crate::U64_SIZE;
 use std::cmp::Ordering;
+use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
 use std::path::Path;
@@ -79,7 +80,86 @@ impl IndexShard {
         }
     }
 
+    fn build_entry(&self, key: Vec<u8>, value: Vec<u8>) -> IndexDataUnit {
+        let build_entry = {
+            let mut entry = Vec::new();
+            let key = IndexDataUnit::new(key.clone().into());
+            let value = IndexDataUnit::new(value.clone());
+            entry.extend(key.to_vec());
+            entry.extend(value.to_vec());
+            entry
+        };
+
+        IndexDataUnit::new(build_entry)
+    }
+
+    fn swap_elements<K: IndexKey>(
+        &self,
+        file: &mut File,
+        i: usize,
+        key_size: usize,
+        value_size: usize,
+        first_element: &[u8],
+        second_element: &[u8],
+    ) -> Result<(), std::io::Error> {
+        file.write_at(
+            second_element,
+            Self::get_element_offset(i, key_size, value_size) as u64,
+        )?;
+        file.write_at(
+            first_element,
+            Self::get_element_offset(i - 1, key_size, value_size) as u64,
+        )?;
+        Ok(())
+    }
+
+    fn keep_binary_order<K: IndexKey>(&mut self, key_size: usize, value_size: usize) {
+        let mut i = { self.header.read().unwrap().items_len - 1 };
+
+        while i > 0 {
+            let (current_key, _) = self.get_entry(i as usize, key_size, value_size).unwrap();
+            let (previous_key, _) = self
+                .get_entry(i as usize - 1, key_size, value_size)
+                .unwrap();
+
+            let curr_index: K = K::from(current_key);
+            let prev_index: K = K::from(previous_key);
+            match curr_index.cmp(&prev_index) {
+                Ordering::Less => {
+                    let first_element = self.get_element(i as usize, key_size, value_size).unwrap();
+                    let second_element = self
+                        .get_element(i as usize - 1, key_size, value_size)
+                        .unwrap();
+
+                    {
+                        let mut writer = self.data.write().unwrap();
+                        writer
+                            .operate(|file| {
+                                self.swap_elements::<K>(
+                                    file,
+                                    i as usize,
+                                    key_size,
+                                    value_size,
+                                    &first_element,
+                                    &second_element,
+                                )
+                                .unwrap();
+                                i -= 1;
+                                Ok(())
+                            })
+                            .unwrap();
+                    }
+                }
+                _ => break,
+            }
+        }
+    }
+
     pub fn insert<K: IndexKey>(&mut self, key: K, value: Vec<u8>) {
+        let key_vec: Vec<u8> = key.into();
+        let key_size = key_vec.len();
+        let value_size = value.len();
+
         {
             let mut writer = self.data.write().unwrap();
             writer
@@ -88,18 +168,8 @@ impl IndexShard {
                         .seek(SeekFrom::End(0))
                         .expect("Failed to seek to end of file");
 
-                    let key_vec: Vec<u8> = key.clone().into();
-
-                    let build_entry = {
-                        let mut entry = Vec::new();
-                        let key = IndexDataUnit::new(key_vec.clone());
-                        let value = IndexDataUnit::new(value.clone());
-                        entry.extend(key.to_vec());
-                        entry.extend(value.to_vec());
-                        entry
-                    };
-
-                    let entry_index_unit = IndexDataUnit::new(build_entry).to_vec();
+                    let build_entry = self.build_entry(key_vec, value);
+                    let entry_index_unit = build_entry.to_vec();
 
                     file.write_all(&entry_index_unit)
                         .expect("Failed to write item to file");
@@ -114,55 +184,7 @@ impl IndexShard {
         }
 
         if self.binary_order {
-            let mut i = { self.header.read().unwrap().items_len - 1 };
-            let key_vec: Vec<u8> = key.into();
-            let key_size = key_vec.len();
-            let value_size = value.len();
-
-            while i > 0 {
-                let (current_key, _) = self.get_entry(i as usize, key_size, value_size).unwrap();
-                let (previous_key, _) = self
-                    .get_entry(i as usize - 1, key_size, value_size)
-                    .unwrap();
-
-                let curr_index: K = K::from(current_key);
-                let prev_index: K = K::from(previous_key);
-                match curr_index.cmp(&prev_index) {
-                    Ordering::Less => {
-                        let first_element =
-                            self.get_element(i as usize, key_size, value_size).unwrap();
-                        let second_element = self
-                            .get_element(i as usize - 1, key_size, value_size)
-                            .unwrap();
-
-                        {
-                            let mut writer = self.data.write().unwrap();
-                            writer
-                                .operate(|file| {
-                                    file.write_at(
-                                        second_element.as_slice(),
-                                        Self::get_element_offset(i as usize, key_size, value_size)
-                                            as u64,
-                                    )
-                                    .unwrap();
-                                    file.write_at(
-                                        first_element.as_slice(),
-                                        Self::get_element_offset(
-                                            i as usize - 1,
-                                            key_size,
-                                            value_size,
-                                        ) as u64,
-                                    )
-                                    .unwrap();
-                                    i -= 1;
-                                    Ok(())
-                                })
-                                .unwrap();
-                        }
-                    }
-                    _ => break,
-                }
-            }
+            self.keep_binary_order::<K>(key_size, value_size)
         }
     }
 
