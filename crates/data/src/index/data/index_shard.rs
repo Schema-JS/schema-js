@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock};
 pub struct IndexShard {
     pub data: Arc<RwLock<DataHandler>>,
     pub header: RwLock<IndexShardHeader>,
-    pub binary_order: bool,
+    binary_order: bool,
 }
 
 impl IndexShard {
@@ -187,34 +187,6 @@ impl IndexShard {
             self.keep_binary_order::<K>(key_size, value_size)
         }
     }
-
-    pub fn swap(&mut self, first_entry_offset: usize, second_entry_offset: usize) {
-        // Todo this can be done at DataHandler with much less overload
-        let (first_entry, second_entry) = {
-            let reader = self.data.read().unwrap();
-            (
-                IndexDataUnit::from_data_handler(first_entry_offset as u64, &reader),
-                IndexDataUnit::from_data_handler(second_entry_offset as u64, &reader),
-            )
-        };
-
-        let mut writer = self.data.write().unwrap();
-        writer
-            .operate(|file| {
-                if first_entry.is_some() && second_entry.is_some() {
-                    let first_entry = first_entry.unwrap();
-                    let second_entry = second_entry.unwrap();
-
-                    file.write_at(&second_entry.to_vec(), first_entry_offset as u64)
-                        .unwrap();
-                    file.write_at(&first_entry.to_vec(), second_entry_offset as u64)
-                        .unwrap();
-                }
-
-                Ok(())
-            })
-            .unwrap();
-    }
 }
 
 #[cfg(test)]
@@ -222,7 +194,7 @@ mod test {
     use crate::index::data::index_data_unit::IndexDataUnit;
     use crate::index::data::index_shard::IndexShard;
     use crate::index::data::index_shard_header::IndexShardHeader;
-    use crate::index::phantom::string_index::StringIndexKey;
+    use crate::index::keys::string_index::StringIndexKey;
     use crate::U64_SIZE;
     use tempfile::tempdir;
     use uuid::Uuid;

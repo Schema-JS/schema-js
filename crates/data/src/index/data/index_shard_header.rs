@@ -4,7 +4,6 @@ use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
 use std::sync::{Arc, RwLock};
-use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct IndexShardHeader {

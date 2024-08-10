@@ -1,8 +1,8 @@
-use crate::index::composite_key::index_key_sha256::IndexKeySha256;
 use crate::index::data::index_shard::IndexShard;
 use crate::index::implementations::hash::hash_index_header::{
     HASH_INDEX_KEY_SIZE, HASH_INDEX_TOTAL_ENTRY_SIZE, HASH_INDEX_VALUE_SIZE,
 };
+use crate::index::keys::index_key_sha256::IndexKeySha256;
 use crate::index::Index;
 use std::fmt::Debug;
 use std::io::{Seek, Write};
@@ -74,8 +74,8 @@ impl Index<IndexKeySha256> for HashIndex {
 #[cfg(test)]
 mod test {
     use crate::index::composite_key::composite_key::CompositeKey;
-    use crate::index::composite_key::index_key_sha256::IndexKeySha256;
     use crate::index::implementations::hash::hash_index::HashIndex;
+    use crate::index::keys::index_key_sha256::IndexKeySha256;
     use crate::index::Index;
     use tempfile::tempdir;
     use uuid::Uuid;
