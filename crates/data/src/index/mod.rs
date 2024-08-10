@@ -3,6 +3,8 @@ mod data;
 mod implementations;
 mod index_child;
 mod index_type;
+pub mod phantom;
+mod types;
 
 use std::fmt::Debug;
 

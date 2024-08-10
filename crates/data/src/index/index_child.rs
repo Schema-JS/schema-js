@@ -1,10 +1,11 @@
-use crate::index::composite_key::CompositeKey;
+use crate::index::composite_key::composite_key::CompositeKey;
 use crate::index::index_type::IndexType;
 use crate::map_shard::MapShard;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
+
 pub struct IndexChild {
     // Name of the index
     pub name: String,

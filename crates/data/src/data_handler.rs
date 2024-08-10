@@ -70,17 +70,17 @@ impl DataHandler {
             .map(|i| i.to_vec())
     }
 
-    pub fn operate<F>(&mut self, callback: F) -> std::io::Result<()>
+    pub fn operate<F, R>(&mut self, callback: F) -> std::io::Result<R>
     where
-        F: FnOnce(&mut File) -> std::io::Result<()>,
+        F: FnOnce(&mut File) -> std::io::Result<R>,
     {
-        let _ = callback(&mut self.file)?;
+        let cb = callback(&mut self.file)?;
 
         self.file.flush()?;
 
         let new_mmap = unsafe { Mmap::map(&self.file) };
         self.mmap = new_mmap?;
 
-        Ok(())
+        Ok(cb)
     }
 }

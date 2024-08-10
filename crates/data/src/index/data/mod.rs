@@ -1,2 +1,3 @@
-mod index_shard;
-mod index_shard_header;
+pub mod index_data_unit;
+pub mod index_shard;
+pub mod index_shard_header;
