@@ -40,14 +40,6 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         }
     }
 
-    pub fn get_entry_size(key_size: usize, value_size: usize) -> usize {
-        get_entry_size(key_size, value_size)
-    }
-
-    pub fn get_element_offset(index: usize, key_size: usize, value_size: usize) -> usize {
-        get_element_offset(index, key_size, value_size)
-    }
-
     pub fn get_element(&self, index: usize, key_size: usize, value_size: usize) -> Option<Vec<u8>> {
         let reader = self.data.read().unwrap();
         let starting_point = Self::get_element_offset(index, key_size, value_size) as u64;
@@ -68,7 +60,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
                 let index_unit = IndexDataUnit::try_from(el.as_slice()).ok()?;
                 let data = index_unit.data;
 
-                let key = { IndexDataUnit::try_from(&data[0..(U64_SIZE + key_size)]).ok()? };
+                let key = IndexDataUnit::try_from(&data[0..(U64_SIZE + key_size)]).ok()?;
 
                 let value = IndexDataUnit::try_from(&data[(U64_SIZE + key_size)..]).ok()?;
 
@@ -88,6 +80,79 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
             None => return None,
             Some((key_unit, val_unit, el)) => Some((K::from(key_unit), V::from(val_unit), el)),
         }
+    }
+
+    pub fn insert(&mut self, key: K, value: V) {
+        let key_vec: Vec<u8> = key.into();
+        let key_size = key_vec.len();
+
+        let value_vec: Vec<u8> = value.into();
+        let value_size = value_vec.len();
+
+        {
+            let mut writer = self.data.write().unwrap();
+            writer
+                .operate(|file| {
+                    let end_of_file = file
+                        .seek(SeekFrom::End(0))
+                        .expect("Failed to seek to end of file");
+
+                    let build_entry = self.build_entry(key_vec, value_vec);
+                    let entry_index_unit: Vec<u8> = build_entry.into();
+
+                    file.write_all(&entry_index_unit)
+                        .expect("Failed to write item to file");
+                    let new_len = {
+                        let new_len = self.header.write().unwrap().increment_len(file);
+                        new_len
+                    };
+
+                    Ok(new_len)
+                })
+                .unwrap();
+        }
+
+        if self.binary_order {
+            self.keep_binary_order(key_size, value_size)
+        }
+    }
+
+    pub fn binary_search(
+        &self,
+        target: K,
+        key_size: usize,
+        value_size: usize,
+    ) -> Option<(u64, K, V)> {
+        let mut left = 0;
+        let mut right = { self.header.read().unwrap().items_len - 1 };
+
+        while left <= right {
+            let mid = left + (right - left) / 2;
+
+            let (key, value, _) = self.get_kv(mid as usize, key_size, value_size).unwrap();
+
+            match key.cmp(&target) {
+                Ordering::Less => {
+                    left = mid + 1;
+                }
+                Ordering::Equal => {
+                    return Some((mid, key, value));
+                }
+                _ => {
+                    right = mid.saturating_sub(1);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn get_entry_size(key_size: usize, value_size: usize) -> usize {
+        get_entry_size(key_size, value_size)
+    }
+
+    fn get_element_offset(index: usize, key_size: usize, value_size: usize) -> usize {
+        get_element_offset(index, key_size, value_size)
     }
 
     fn build_entry(&self, key: Vec<u8>, value: Vec<u8>) -> IndexDataUnit {
@@ -159,80 +224,6 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
                 _ => break,
             }
         }
-    }
-
-    pub fn insert(&mut self, key: K, value: V) {
-        let key_vec: Vec<u8> = key.into();
-        let key_size = key_vec.len();
-
-        let value_vec: Vec<u8> = value.into();
-        let value_size = value_vec.len();
-
-        {
-            let mut writer = self.data.write().unwrap();
-            writer
-                .operate(|file| {
-                    let end_of_file = file
-                        .seek(SeekFrom::End(0))
-                        .expect("Failed to seek to end of file");
-
-                    let build_entry = self.build_entry(key_vec, value_vec);
-                    let entry_index_unit: Vec<u8> = build_entry.into();
-
-                    file.write_all(&entry_index_unit)
-                        .expect("Failed to write item to file");
-                    let new_len = {
-                        let new_len = self.header.write().unwrap().increment_len(file);
-                        new_len
-                    };
-
-                    Ok(new_len)
-                })
-                .unwrap();
-        }
-
-        if self.binary_order {
-            self.keep_binary_order(key_size, value_size)
-        }
-    }
-
-    pub fn binary_search(
-        &self,
-        target: K,
-        key_size: usize,
-        value_size: usize,
-    ) -> Option<(u64, K, V)> {
-        let mut left = 0;
-        let mut right = { self.header.read().unwrap().items_len - 1 };
-
-        while left <= right {
-            let mid = left + (right - left) / 2;
-
-            let (key, value, _) = self.get_kv(mid as usize, key_size, value_size).unwrap();
-
-            match key.cmp(&target) {
-                Ordering::Less => {
-                    left = mid + 1;
-                }
-                Ordering::Equal => {
-                    return Some((mid, key, value));
-                }
-                _ => {
-                    right = mid.saturating_sub(1);
-                }
-            }
-
-            // // Compare the middle element with the target
-            // if key == target.to_string() {
-            //     return Some(mid);
-            // } else if key < target.to_string() {
-            //     left = mid + 1;
-            // } else {
-            //     right = mid.saturating_sub(1);
-            // }
-        }
-
-        None
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::index::composite_key::composite_key::CompositeKey;
+use crate::index::composite_key::CompositeKey;
 use crate::index::data::index_data_unit::IndexDataUnit;
 use crate::index::types::IndexKey;
 use crate::utils::hash::{sha256_to_string, to_sha256};

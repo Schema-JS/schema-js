@@ -57,7 +57,7 @@ impl Index<IndexKeySha256> for HashIndex {
 
 #[cfg(test)]
 mod test {
-    use crate::index::composite_key::composite_key::CompositeKey;
+    use crate::index::composite_key::CompositeKey;
     use crate::index::implementations::hash::hash_index::HashIndex;
     use crate::index::keys::index_key_sha256::IndexKeySha256;
     use crate::index::Index;
