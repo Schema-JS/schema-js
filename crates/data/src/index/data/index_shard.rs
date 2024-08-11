@@ -195,6 +195,45 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
             self.keep_binary_order(key_size, value_size)
         }
     }
+
+    pub fn binary_search(
+        &self,
+        target: K,
+        key_size: usize,
+        value_size: usize,
+    ) -> Option<(u64, K, V)> {
+        let mut left = 0;
+        let mut right = { self.header.read().unwrap().items_len - 1 };
+
+        while left <= right {
+            let mid = left + (right - left) / 2;
+
+            let (key, value, _) = self.get_kv(mid as usize, key_size, value_size).unwrap();
+
+            match key.cmp(&target) {
+                Ordering::Less => {
+                    left = mid + 1;
+                }
+                Ordering::Equal => {
+                    return Some((mid, key, value));
+                }
+                _ => {
+                    right = mid.saturating_sub(1);
+                }
+            }
+
+            // // Compare the middle element with the target
+            // if key == target.to_string() {
+            //     return Some(mid);
+            // } else if key < target.to_string() {
+            //     left = mid + 1;
+            // } else {
+            //     right = mid.saturating_sub(1);
+            // }
+        }
+
+        None
+    }
 }
 
 #[cfg(test)]

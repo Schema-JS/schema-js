@@ -26,31 +26,13 @@ impl HashIndex {
     }
 
     pub fn find_index(&self, find: IndexKeySha256) -> Option<u64> {
-        // let mut left = 0;
-        // let mut right = self.index.header.read().unwrap().items_len - 1;
-        // let target = find.to_string();
-        //
-        // while left <= right {
-        //     let mid = left + (right - left) / 2;
-        //
-        //     let (key, value) = self
-        //         .index
-        //         .get_entry(mid as usize, HASH_INDEX_KEY_SIZE, HASH_INDEX_VALUE_SIZE)
-        //         .unwrap();
-        //
-        //     let key = IndexKeySha256::from(key).to_string();
-        //
-        //     // Compare the middle element with the target
-        //     if key == target.to_string() {
-        //         return Some(mid);
-        //     } else if key < target.to_string() {
-        //         left = mid + 1;
-        //     } else {
-        //         right = mid.saturating_sub(1);
-        //     }
-        // }
-        //
-        None
+        match self
+            .index
+            .binary_search(find, HASH_INDEX_KEY_SIZE, HASH_INDEX_VALUE_SIZE)
+        {
+            None => return None,
+            Some((_, _, val)) => Some(u64::from_le_bytes(val.0.as_slice().try_into().unwrap())),
+        }
     }
 }
 
@@ -190,5 +172,16 @@ mod test {
             .into(),
         );
         assert!(val.is_none());
+
+        // Search All
+        for i in 0..25 {
+            let composite_key = CompositeKey(vec![
+                (String::from("username"), usernames[i].clone()),
+                (String::from("city"), cities[i].clone()),
+            ]);
+
+            let key = IndexKeySha256::from(composite_key);
+            assert!(index.find_index(key).is_some());
+        }
     }
 }
