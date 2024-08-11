@@ -163,7 +163,6 @@ impl DataShardHeader {
                     file.write_at(&offset_bytes, pos as u64)
                         .expect("Failed to write offset to file");
                     self.last_offset_index = available_index as i64;
-
                     Ok(())
                 }
             }
@@ -229,5 +228,9 @@ impl DataShardHeader {
         } else {
             None
         }
+    }
+
+    pub fn get_last_offset_index(&self) -> i64 {
+        self.last_offset_index
     }
 }
