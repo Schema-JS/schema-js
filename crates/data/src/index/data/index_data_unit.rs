@@ -1,4 +1,5 @@
 use crate::data_handler::DataHandler;
+use crate::index::errors::IndexError;
 use crate::U64_SIZE;
 
 pub struct IndexDataUnit {
@@ -36,36 +37,42 @@ impl IndexDataUnit {
         None
     }
 
-    pub fn from_vec(data: Vec<u8>) -> Option<Self> {
+    pub fn header_size() -> usize {
+        U64_SIZE // item_size
+    }
+}
+
+impl TryFrom<&[u8]> for IndexDataUnit {
+    type Error = IndexError;
+
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
         let mut unit = IndexDataUnit::new(vec![]);
 
         let item_size = data.get(0..U64_SIZE);
         return match item_size {
-            None => None,
+            None => Err(Self::Error::UnrecognizedItemSize),
             Some(size) => {
                 let item_size_bytes: [u8; 8] = size.try_into().unwrap();
                 unit.item_size = u64::from_le_bytes(item_size_bytes);
 
                 if let Some(data) = data.get(U64_SIZE..(U64_SIZE + unit.item_size as usize)) {
                     unit.data = data.to_vec();
-                    Some(unit)
+                    Ok(unit)
                 } else {
-                    None
+                    Err(Self::Error::InvalidItem)
                 }
             }
         };
     }
+}
 
-    pub fn to_vec(&self) -> Vec<u8> {
+impl Into<Vec<u8>> for IndexDataUnit {
+    fn into(self) -> Vec<u8> {
         let mut entry = vec![];
 
         entry.extend(self.item_size.to_le_bytes());
         entry.extend(self.data.as_slice());
 
         entry
-    }
-
-    pub fn header_size() -> usize {
-        U64_SIZE // item_size
     }
 }

@@ -5,3 +5,5 @@ pub trait IndexKey:
     From<Vec<u8>> + Into<Vec<u8>> + Ord + Clone + Into<String> + From<IndexDataUnit>
 {
 }
+
+pub trait IndexValue: From<Vec<u8>> + Into<Vec<u8>> + Clone + From<IndexDataUnit> {}

@@ -3,6 +3,7 @@ use crate::index::implementations::hash::hash_index_header::{
     HASH_INDEX_KEY_SIZE, HASH_INDEX_TOTAL_ENTRY_SIZE, HASH_INDEX_VALUE_SIZE,
 };
 use crate::index::keys::index_key_sha256::IndexKeySha256;
+use crate::index::vals::raw_value::RawIndexValue;
 use crate::index::Index;
 use std::fmt::Debug;
 use std::io::{Seek, Write};
@@ -10,7 +11,7 @@ use std::path::Path;
 
 #[derive(Debug)]
 pub struct HashIndex {
-    index: IndexShard,
+    index: IndexShard<IndexKeySha256, RawIndexValue>,
 }
 
 impl HashIndex {
@@ -25,37 +26,38 @@ impl HashIndex {
     }
 
     pub fn find_index(&self, find: IndexKeySha256) -> Option<u64> {
-        let mut left = 0;
-        let mut right = self.index.header.read().unwrap().items_len - 1;
-        let target = find.to_string();
-
-        while left <= right {
-            let mid = left + (right - left) / 2;
-
-            let (key, value) = self
-                .index
-                .get_entry(mid as usize, HASH_INDEX_KEY_SIZE, HASH_INDEX_VALUE_SIZE)
-                .unwrap();
-
-            let key = IndexKeySha256::from(key).to_string();
-
-            // Compare the middle element with the target
-            if key == target.to_string() {
-                return Some(mid);
-            } else if key < target.to_string() {
-                left = mid + 1;
-            } else {
-                right = mid.saturating_sub(1);
-            }
-        }
-
+        // let mut left = 0;
+        // let mut right = self.index.header.read().unwrap().items_len - 1;
+        // let target = find.to_string();
+        //
+        // while left <= right {
+        //     let mid = left + (right - left) / 2;
+        //
+        //     let (key, value) = self
+        //         .index
+        //         .get_entry(mid as usize, HASH_INDEX_KEY_SIZE, HASH_INDEX_VALUE_SIZE)
+        //         .unwrap();
+        //
+        //     let key = IndexKeySha256::from(key).to_string();
+        //
+        //     // Compare the middle element with the target
+        //     if key == target.to_string() {
+        //         return Some(mid);
+        //     } else if key < target.to_string() {
+        //         left = mid + 1;
+        //     } else {
+        //         right = mid.saturating_sub(1);
+        //     }
+        // }
+        //
         None
     }
 }
 
 impl Index<IndexKeySha256> for HashIndex {
     fn insert(&mut self, key: IndexKeySha256, row_position: u64) {
-        self.index.insert(key, row_position.to_le_bytes().to_vec());
+        self.index
+            .insert(key, row_position.to_le_bytes().to_vec().into());
     }
 
     fn get(&self, key: &IndexKeySha256) -> Option<u64> {
