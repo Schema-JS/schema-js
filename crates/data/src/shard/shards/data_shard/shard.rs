@@ -72,12 +72,6 @@ impl DataShard {
             }
         }
     }
-
-    pub fn get_id(&self) -> String {
-        MapShard::<DataShard, DataShardConfig>::extract_shard_signature(self.get_path())
-            .unwrap()
-            .1
-    }
 }
 
 impl Shard<DataShardConfig> for DataShard {
