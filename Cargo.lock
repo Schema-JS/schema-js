@@ -2264,6 +2264,7 @@ version = "0.1.0"
 dependencies = [
  "borsh",
  "enum-as-inner",
+ "indexmap",
  "memmap2",
  "rand 0.8.5",
  "serde",

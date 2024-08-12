@@ -7,4 +7,8 @@ pub enum ShardErrors {
     FlushingError,
     ErrorReadingByteRange,
     ErrorAddingHeaderOffset,
+    UnknownEntry,
+    ErrorAddingEntry,
+    UnknownBreakingPoint,
+    OutOfRange,
 }

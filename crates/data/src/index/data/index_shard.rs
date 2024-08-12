@@ -1,142 +1,164 @@
-use crate::data_handler::DataHandler;
+use crate::errors::ShardErrors;
 use crate::index::data::index_data_unit::IndexDataUnit;
-use crate::index::data::index_shard_header::IndexShardHeader;
 use crate::index::types::{IndexKey, IndexValue};
-use crate::index::utils::{get_element_offset, get_entry_size};
+use crate::index::utils::get_entry_size;
+use crate::shard::map_shard::MapShard;
+use crate::shard::shards::kv::config::KvShardConfig;
+use crate::shard::shards::kv::shard::KvShard;
+use crate::shard::Shard;
 use crate::U64_SIZE;
 use std::cmp::Ordering;
-use std::fs::File;
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Seek, Write};
 use std::marker::PhantomData;
 use std::os::unix::fs::FileExt;
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
 #[derive(Debug)]
 pub struct IndexShard<K: IndexKey, V: IndexValue> {
-    pub data: Arc<RwLock<DataHandler>>,
-    pub header: RwLock<IndexShardHeader>,
+    pub data: RwLock<MapShard<KvShard, KvShardConfig>>,
     binary_order: bool,
+    key_size: usize,
+    value_size: usize,
 
     // Markers
     _key_marker: PhantomData<K>,
     _val_marker: PhantomData<V>,
 }
 
+pub type IndexEntry = (IndexDataUnit, IndexDataUnit, Vec<u8>);
+
 impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
-    pub fn new<P: AsRef<Path> + Clone>(shard_file: P, binary_order: Option<bool>) -> Self {
-        let data = unsafe { DataHandler::new(shard_file).unwrap() };
-        let data = Arc::new(data);
+    pub fn new<P: AsRef<Path> + Clone>(
+        shard_folder: P,
+        index_name: String,
+        key_size: usize,
+        value_size: usize,
+        max_capacity: Option<u64>,
+        binary_order: Option<bool>,
+    ) -> Self {
+        let shard_collection = MapShard::new(
+            shard_folder.as_ref().to_path_buf(),
+            format!("indx{}_", index_name).as_str(),
+            KvShardConfig {
+                value_size: get_entry_size(key_size, value_size),
+                max_capacity: max_capacity.clone(),
+            },
+        );
+
         Self {
-            data: data.clone(),
-            header: RwLock::new(IndexShardHeader::new_from_file(
-                data.clone(),
-                Some(0),
-                Some(2_500_000),
-            )),
+            data: RwLock::new(shard_collection),
             binary_order: binary_order.unwrap_or(false),
             _key_marker: PhantomData,
             _val_marker: PhantomData,
+            key_size,
+            value_size,
         }
     }
 
-    pub fn get_element(&self, index: usize, key_size: usize, value_size: usize) -> Option<Vec<u8>> {
-        let reader = self.data.read().unwrap();
-        let starting_point = Self::get_element_offset(index, key_size, value_size) as u64;
-        reader.read_pointer(starting_point, Self::get_entry_size(key_size, value_size))
+    fn build_entry_from_vec(&self, el: Vec<u8>) -> Option<IndexEntry> {
+        let index_unit = IndexDataUnit::try_from(el.as_slice()).ok()?;
+        let data = index_unit.data;
+        let key = IndexDataUnit::try_from(&data[0..(U64_SIZE + self.key_size)]).ok()?;
+        let value = IndexDataUnit::try_from(&data[(U64_SIZE + self.key_size)..]).ok()?;
+
+        Some((key, value, el))
     }
 
-    pub fn get_entry(
+    pub fn get_entry_from_shard(
         &self,
+        shard: &KvShard,
         index: usize,
-        key_size: usize,
-        value_size: usize,
-    ) -> Option<(IndexDataUnit, IndexDataUnit, Vec<u8>)> {
-        let get_el = self.get_element(index, key_size, value_size);
+    ) -> Result<Vec<u8>, ShardErrors> {
+        shard.read_item_from_index(index)
+    }
+
+    pub fn get_entry(&self, index: usize, global: bool) -> Option<IndexEntry> {
+        let get_el = if !global {
+            self.data.read().unwrap().get_element_from_master(index)
+        } else {
+            self.data.read().unwrap().get_element(index)
+        };
 
         match get_el {
-            None => return None,
-            Some(el) => {
-                let index_unit = IndexDataUnit::try_from(el.as_slice()).ok()?;
-                let data = index_unit.data;
-
-                let key = IndexDataUnit::try_from(&data[0..(U64_SIZE + key_size)]).ok()?;
-
-                let value = IndexDataUnit::try_from(&data[(U64_SIZE + key_size)..]).ok()?;
-
-                Some((key, value, el))
-            }
+            Ok(el) => Some(self.build_entry_from_vec(el)?),
+            Err(_) => None,
         }
     }
 
-    pub fn get_kv(
-        &self,
-        index: usize,
-        key_size: usize,
-        value_size: usize,
-    ) -> Option<(K, V, Vec<u8>)> {
-        let entry = self.get_entry(index, key_size, value_size);
+    pub fn get_kv(&self, index: usize, global: bool) -> Option<(K, V, Vec<u8>)> {
+        let entry = self.get_entry(index, global);
         match entry {
             None => return None,
-            Some((key_unit, val_unit, el)) => Some((K::from(key_unit), V::from(val_unit), el)),
+            Some((key_unit, val_unit, el)) => Some(Self::build_kv(key_unit, val_unit, el)),
         }
+    }
+
+    fn build_kv(key_unit: IndexDataUnit, val_unit: IndexDataUnit, el: Vec<u8>) -> (K, V, Vec<u8>) {
+        (K::from(key_unit), V::from(val_unit), el)
     }
 
     pub fn insert(&mut self, key: K, value: V) {
         let key_vec: Vec<u8> = key.into();
-        let key_size = key_vec.len();
-
         let value_vec: Vec<u8> = value.into();
-        let value_size = value_vec.len();
 
-        {
-            let mut writer = self.data.write().unwrap();
-            writer
-                .operate(|file| {
-                    let end_of_file = file
-                        .seek(SeekFrom::End(0))
-                        .expect("Failed to seek to end of file");
+        let build_entry = self.build_entry(key_vec, value_vec);
+        let entry_index_unit: Vec<u8> = build_entry.into();
 
-                    let build_entry = self.build_entry(key_vec, value_vec);
-                    let entry_index_unit: Vec<u8> = build_entry.into();
-
-                    file.write_all(&entry_index_unit)
-                        .expect("Failed to write item to file");
-                    let new_len = {
-                        let new_len = self.header.write().unwrap().increment_len(file);
-                        new_len
-                    };
-
-                    Ok(new_len)
-                })
-                .unwrap();
-        }
+        self.data.write().unwrap().insert_row(entry_index_unit);
 
         if self.binary_order {
-            self.keep_binary_order(key_size, value_size)
+            self.keep_binary_order();
         }
     }
 
-    pub fn binary_search(
-        &self,
-        target: K,
-        key_size: usize,
-        value_size: usize,
-    ) -> Option<(u64, K, V)> {
+    pub fn binary_search(&self, target: K) -> Option<(u64, K, V)> {
+        let reader = self.data.read().unwrap();
+        let breaking_point = reader.current_master_shard.breaking_point();
+        match breaking_point {
+            None => self.raw_binary_search(&reader.current_master_shard, target),
+            Some(_) => {
+                let past_master_shards = reader.past_master_shards.read().unwrap();
+
+                let shards = {
+                    let mut shards = vec![&reader.current_master_shard];
+                    let combined_shards: Vec<&KvShard> = past_master_shards.values().collect();
+                    shards.extend(combined_shards);
+                    shards
+                };
+
+                for shard in shards {
+                    if let Some(found) = self.raw_binary_search(shard, target.clone()) {
+                        return Some(found);
+                    }
+                }
+
+                None
+            }
+        }
+    }
+
+    pub fn raw_binary_search(&self, shard: &KvShard, target: K) -> Option<(u64, K, V)> {
         let mut left = 0;
-        let mut right = { self.header.read().unwrap().items_len - 1 };
+        let mut right = shard.get_last_index();
 
         while left <= right {
             let mid = left + (right - left) / 2;
 
-            let (key, value, _) = self.get_kv(mid as usize, key_size, value_size).unwrap();
+            let kv = {
+                let entry = self.get_entry_from_shard(shard, mid as usize).unwrap();
+                let (key_unit, val_unit, el) = self.build_entry_from_vec(entry).unwrap();
+                Self::build_kv(key_unit, val_unit, el)
+            };
+
+            let (key, value, _) = kv;
 
             match key.cmp(&target) {
                 Ordering::Less => {
                     left = mid + 1;
                 }
                 Ordering::Equal => {
-                    return Some((mid, key, value));
+                    return Some((mid as u64, key, value));
                 }
                 _ => {
                     right = mid.saturating_sub(1);
@@ -145,14 +167,6 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         }
 
         None
-    }
-
-    fn get_entry_size(key_size: usize, value_size: usize) -> usize {
-        get_entry_size(key_size, value_size)
-    }
-
-    fn get_element_offset(index: usize, key_size: usize, value_size: usize) -> usize {
-        get_element_offset(index, key_size, value_size)
     }
 
     fn build_entry(&self, key: Vec<u8>, value: Vec<u8>) -> IndexDataUnit {
@@ -173,49 +187,34 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         IndexDataUnit::new(build_entry)
     }
 
-    fn swap_elements(
-        &self,
-        file: &mut File,
-        i: usize,
-        key_size: usize,
-        value_size: usize,
-        first_element: &[u8],
-        second_element: &[u8],
-    ) -> Result<(), std::io::Error> {
-        file.write_at(
-            second_element,
-            Self::get_element_offset(i, key_size, value_size) as u64,
-        )?;
-        file.write_at(
-            first_element,
-            Self::get_element_offset(i - 1, key_size, value_size) as u64,
-        )?;
-        Ok(())
-    }
-
-    fn keep_binary_order(&mut self, key_size: usize, value_size: usize) {
-        let mut i = { self.header.read().unwrap().items_len - 1 };
+    fn keep_binary_order(&mut self) {
+        let mut i = {
+            self.data
+                .read()
+                .unwrap()
+                .current_master_shard
+                .get_last_index()
+        };
 
         while i > 0 {
-            let (curr_index, _, curr_original_el) =
-                self.get_kv(i as usize, key_size, value_size).unwrap();
-            let (prev_index, _, prev_original_el) =
-                self.get_kv(i as usize - 1, key_size, value_size).unwrap();
+            let (curr_index, _, curr_original_el) = self.get_kv(i as usize, false).unwrap();
+            let (prev_index, _, prev_original_el) = self.get_kv(i as usize - 1, false).unwrap();
 
             match curr_index.cmp(&prev_index) {
                 Ordering::Less => {
                     let mut writer = self.data.write().unwrap();
-                    writer
+                    let mut curr_shard = writer.current_master_shard.data.write().unwrap();
+                    curr_shard
                         .operate(|file| {
-                            self.swap_elements(
-                                file,
-                                i as usize,
-                                key_size,
-                                value_size,
-                                &curr_original_el,
-                                &prev_original_el,
-                            )
-                            .unwrap();
+                            writer
+                                .current_master_shard
+                                .swap_elements(
+                                    file,
+                                    i as usize,
+                                    &curr_original_el,
+                                    &prev_original_el,
+                                )
+                                .unwrap();
                             i -= 1;
                             Ok(())
                         })
@@ -229,11 +228,9 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
 
 #[cfg(test)]
 mod test {
-    use crate::index::data::index_data_unit::IndexDataUnit;
     use crate::index::data::index_shard::IndexShard;
-    use crate::index::data::index_shard_header::IndexShardHeader;
     use crate::index::keys::string_index::StringIndexKey;
-    use crate::index::utils::{get_element_offset, get_entry_size};
+    use crate::index::utils::get_entry_size;
     use crate::index::vals::raw_value::RawIndexValue;
     use crate::U64_SIZE;
     use tempfile::tempdir;
@@ -243,22 +240,29 @@ mod test {
     pub async fn test_data_positions() {
         let entry_size = get_entry_size(32, 1024);
         assert_eq!(entry_size, 1080);
-
-        let offset_by_index = get_element_offset(1, 32, 1024);
-        assert_eq!(
-            offset_by_index,
-            IndexShardHeader::header_size() + (entry_size * 1)
-        );
+        //
+        // let offset_by_index = get_element_offset(1, 32, 1024);
+        // assert_eq!(
+        //     offset_by_index,
+        //     IndexShardHeader::header_size() + (entry_size * 1)
+        // );
     }
 
     #[tokio::test]
     pub async fn test_inserts_and_gets() {
         let temp_dir = tempdir().unwrap();
-        let file_path = temp_dir
-            .path()
-            .join(format!("{}.index", Uuid::new_v4().to_string()));
+        let index_folder = temp_dir.path().join("indx");
 
-        let mut index = IndexShard::new(file_path, Some(true));
+        std::fs::create_dir(index_folder.clone()).unwrap();
+
+        let mut index = IndexShard::new(
+            index_folder.clone(),
+            "indx".to_string(),
+            32,
+            1024,
+            None,
+            Some(true),
+        );
 
         let key_size = 32;
         let value_size = 1024;
@@ -276,44 +280,22 @@ mod test {
         index.insert(StringIndexKey("h".repeat(key_size)), vec![0u8; 1024].into());
 
         {
-            let get_el = index.get_element(4, key_size, value_size).unwrap();
-            println!("{:?}", &get_el);
-            let index_unit = IndexDataUnit::try_from(get_el.as_slice()).unwrap();
-            let data = index_unit.data;
-            println!("Data {:?}", data);
+            let entry = index.get_kv(0, true).unwrap();
+            assert_eq!(entry.0, StringIndexKey("a".repeat(key_size)));
+            assert_eq!(entry.1 .0, vec![0u8; 1024]);
 
-            let key_vec = (&data[0..(U64_SIZE + key_size)]).to_vec();
-            println!("key vec {:?}", &key_vec);
-            let key = IndexDataUnit::try_from(key_vec.as_slice()).unwrap();
-            assert_eq!(key.item_size, key_size as u64);
-            assert_eq!("e".repeat(32).into_bytes(), key.data);
+            let entry = index.get_kv(4, true).unwrap();
+            assert_eq!(entry.0, StringIndexKey("e".repeat(key_size)));
+            assert_eq!(entry.1 .0, [1u8; 1024]);
 
-            let value_vec = &data[(U64_SIZE + key_size)..];
-            let value = IndexDataUnit::try_from(value_vec).unwrap();
-            assert_eq!(value.data, vec![1u8; 1024]);
+            let entry = index.get_kv(7, true).unwrap();
+            assert_eq!(entry.0, StringIndexKey("h".repeat(key_size)));
+            assert_eq!(entry.1 .0, [0u8; 1024]);
+
+            let entry = index.get_kv(8, true);
+            assert!(entry.is_none())
         }
 
-        {
-            let get_el = index.get_element(7, key_size, value_size).unwrap();
-            println!("{:?}", &get_el);
-            let index_unit = IndexDataUnit::try_from(get_el.as_slice()).unwrap();
-            let data = index_unit.data;
-            println!("Data {:?}", data);
-
-            let key_vec = (&data[0..(U64_SIZE + key_size)]).to_vec();
-            println!("key vec {:?}", &key_vec);
-            let key = IndexDataUnit::try_from(key_vec.as_slice()).unwrap();
-            assert_eq!(key.item_size, key_size as u64);
-            assert_eq!("h".repeat(32).into_bytes(), key.data);
-
-            let value_vec = &data[(U64_SIZE + key_size)..];
-            let value = IndexDataUnit::try_from(value_vec).unwrap();
-            assert_eq!(value.data, vec![0u8; 1024]);
-
-            let b_entry = index.get_entry(1, key_size, value_size).unwrap();
-
-            assert_eq!(b_entry.0.data, "b".repeat(32).into_bytes());
-            assert_eq!(b_entry.1.data, vec![0u8; 1024]);
-        }
+        std::fs::remove_dir_all(index_folder).unwrap();
     }
 }

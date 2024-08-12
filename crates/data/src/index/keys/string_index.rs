@@ -2,6 +2,7 @@ use crate::index::data::index_data_unit::IndexDataUnit;
 use crate::index::types::IndexKey;
 use std::cmp::Ordering;
 
+#[derive(Debug)]
 pub struct StringIndexKey(pub String);
 
 impl From<Vec<u8>> for StringIndexKey {

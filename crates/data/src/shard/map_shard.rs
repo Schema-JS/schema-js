@@ -1,5 +1,7 @@
+use crate::errors::ShardErrors;
 use crate::shard::{Shard, ShardConfig};
 use crate::utils::fs::list_files_with_prefix;
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
@@ -9,7 +11,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub struct MapShard<S: Shard<Opts>, Opts: ShardConfig> {
     pub current_master_shard: S,
-    pub past_master_shards: RwLock<HashMap<String, S>>,
+    pub past_master_shards: RwLock<IndexMap<String, S>>,
     pub shard_prefix: String,
     pub shards_folder: PathBuf,
     config: Opts,
@@ -22,7 +24,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
         let mut sorted_files: Vec<(usize, String, PathBuf)> = Vec::new();
 
         for path in shard_files {
-            let val = Self::extract_file_signature(path);
+            let val = Self::extract_shard_signature(path);
             if let Some(val) = val {
                 sorted_files.push(val);
             }
@@ -42,7 +44,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
                 ))
             });
 
-        let mut past_master_shards = HashMap::new();
+        let mut past_master_shards = IndexMap::new();
 
         for &(number, ref uuid, ref path) in &sorted_files {
             if path != &current_master_shard {
@@ -79,7 +81,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
         )
     }
 
-    fn extract_file_signature(path: PathBuf) -> Option<(usize, String, PathBuf)> {
+    pub fn extract_shard_signature(path: PathBuf) -> Option<(usize, String, PathBuf)> {
         if let Some(name) = path.file_name() {
             let name_str = name.to_string_lossy();
             let parts: Vec<&str> = name_str
@@ -103,7 +105,8 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
 
         if !curr_master_has_space {
             let (shard_number, _, _) =
-                Self::extract_file_signature(self.current_master_shard.get_path().clone()).unwrap();
+                Self::extract_shard_signature(self.current_master_shard.get_path().clone())
+                    .unwrap();
             let new_shard_number = shard_number + 1;
 
             let shard = {
@@ -121,11 +124,63 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
             {
                 let old_master = std::mem::replace(&mut self.current_master_shard, shard);
                 let mut past_ms_writer = self.past_master_shards.write().unwrap();
-                past_ms_writer.insert(old_master.get_id(), old_master);
+                let (_, shard_id, _) =
+                    Self::extract_shard_signature(old_master.get_path()).unwrap();
+                past_ms_writer.insert(shard_id, old_master);
             }
         }
 
         self.current_master_shard.insert_item(data).unwrap()
+    }
+
+    fn breaking_point(&self) -> Option<u64> {
+        self.current_master_shard.breaking_point()
+    }
+
+    pub fn get_element_from_specific(
+        &self,
+        shard: &S,
+        index: usize,
+    ) -> Result<Vec<u8>, ShardErrors> {
+        shard.read_item_from_index(index)
+    }
+
+    pub fn get_element_from_master(&self, index: usize) -> Result<Vec<u8>, ShardErrors> {
+        self.get_element_from_specific(&self.current_master_shard, index)
+    }
+
+    pub fn get_element(&self, index: usize) -> Result<Vec<u8>, ShardErrors> {
+        let breaking_point = self.breaking_point();
+
+        match breaking_point {
+            None => self.get_element_from_master(index),
+            Some(breaking_point) => {
+                let breaking_point_usize = breaking_point as usize;
+
+                let reader = self.past_master_shards.read().unwrap();
+                let shard_reversed = {
+                    let mut combined_shards: Vec<&S> = reader.values().rev().collect();
+                    combined_shards.push(&self.current_master_shard);
+                    combined_shards
+                };
+
+                // Calculate the total number of shards
+                let num_shards = shard_reversed.len();
+                // Determine which shard the index belongs to
+                let shard_index = index / breaking_point_usize;
+
+                println!("Shard Index {}", shard_index);
+
+                if shard_index >= num_shards {
+                    return Err(ShardErrors::OutOfRange);
+                }
+
+                // Calculate the local index within the selected shard
+                let local_index = index % breaking_point_usize;
+
+                self.get_element_from_specific(shard_reversed[shard_index], local_index)
+            }
+        }
     }
 }
 
@@ -242,5 +297,29 @@ mod test {
         assert_eq!(items, vec![b"1".to_vec(), b"2".to_vec()]);
 
         std::fs::remove_dir_all(fake_partial_folder_path).unwrap();
+    }
+
+    #[tokio::test]
+    pub async fn test_global_get_element() {
+        let fake_partial_folder_path = std::env::current_dir().unwrap().join(format!(
+            "./test_cases/fake-db-folder/{}",
+            Uuid::new_v4().to_string()
+        ));
+        std::fs::create_dir(&fake_partial_folder_path).unwrap();
+
+        let mut context = MapShard::<DataShard, DataShardConfig>::new(
+            fake_partial_folder_path.clone(),
+            "data_",
+            DataShardConfig {
+                max_offsets: Some(1),
+            },
+        );
+
+        context.insert_row(b"1".to_vec());
+        context.insert_row(b"2".to_vec());
+        context.insert_row(b"3".to_vec());
+        context.insert_row(b"4".to_vec());
+
+        context.get_element(3).unwrap();
     }
 }

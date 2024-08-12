@@ -1,12 +1,13 @@
 use crate::data_handler::DataHandler;
 use crate::errors::ShardErrors;
+use crate::shard::map_shard::MapShard;
 use crate::shard::shards::data_shard::config::DataShardConfig;
 use crate::shard::shards::data_shard::shard_header::DataShardHeader;
 use crate::shard::Shard;
 use crate::U64_SIZE;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
@@ -15,6 +16,7 @@ pub struct DataShard {
     pub path: PathBuf,
     pub header: RwLock<DataShardHeader>,
     pub data: Arc<RwLock<DataHandler>>,
+    pub id: Uuid,
 }
 
 impl DataShard {
@@ -70,6 +72,12 @@ impl DataShard {
             }
         }
     }
+
+    pub fn get_id(&self) -> String {
+        MapShard::<DataShard, DataShardConfig>::extract_shard_signature(self.get_path())
+            .unwrap()
+            .1
+    }
 }
 
 impl Shard<DataShardConfig> for DataShard {
@@ -81,6 +89,7 @@ impl Shard<DataShardConfig> for DataShard {
         DataShard {
             path: path.clone(),
             data: arc_dh.clone(),
+            id: header.id,
             header: RwLock::new(header),
         }
     }
@@ -99,6 +108,10 @@ impl Shard<DataShardConfig> for DataShard {
             None => Err(ShardErrors::UnknownOffset),
             Some(pos_in_header) => self.read_item(pos_in_header),
         }
+    }
+
+    fn breaking_point(&self) -> Option<u64> {
+        Some(self.header.read().unwrap().get_max_offsets())
     }
 
     fn has_space(&self) -> bool {
@@ -140,7 +153,7 @@ impl Shard<DataShardConfig> for DataShard {
     }
 
     fn get_id(&self) -> String {
-        self.header.read().unwrap().id.to_string()
+        self.id.to_string()
     }
 }
 

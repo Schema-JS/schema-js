@@ -15,8 +15,15 @@ pub struct HashIndex {
 }
 
 impl HashIndex {
-    fn new_from_path<P: AsRef<Path> + Clone>(path: P) -> Self {
-        let index_shard = IndexShard::new(path, Some(true));
+    fn new_from_path<P: AsRef<Path> + Clone>(path: P, capacity: Option<u64>) -> Self {
+        let index_shard = IndexShard::new(
+            path,
+            "hashindx".to_string(),
+            HASH_INDEX_KEY_SIZE,
+            HASH_INDEX_VALUE_SIZE,
+            capacity,
+            Some(true),
+        );
 
         Self { index: index_shard }
     }
@@ -26,10 +33,7 @@ impl HashIndex {
     }
 
     pub fn find_index(&self, find: IndexKeySha256) -> Option<u64> {
-        match self
-            .index
-            .binary_search(find, HASH_INDEX_KEY_SIZE, HASH_INDEX_VALUE_SIZE)
-        {
+        match self.index.binary_search(find) {
             None => return None,
             Some((_, _, val)) => Some(u64::from_le_bytes(val.0.as_slice().try_into().unwrap())),
         }
@@ -67,12 +71,33 @@ mod test {
     #[tokio::test]
     pub async fn test_binary_search_with_composite_keys() {
         let temp_dir = tempdir().unwrap();
-        let file_path = temp_dir
-            .path()
-            .join(format!("{}.index", Uuid::new_v4().to_string()));
 
-        let mut index = HashIndex::new_from_path(file_path);
+        let hashindx = temp_dir.as_ref().to_path_buf().join("hashindx");
+        std::fs::create_dir(hashindx.clone()).unwrap();
 
+        let mut index = HashIndex::new_from_path(hashindx.clone(), None);
+
+        add_data(&mut index);
+
+        std::fs::remove_dir_all(hashindx).unwrap();
+    }
+
+    #[tokio::test]
+    pub async fn test_binary_search_with_composite_keys_and_limit() {
+        let temp_dir = tempdir().unwrap();
+
+        let hashindx = temp_dir.as_ref().to_path_buf().join("hashindx");
+        std::fs::create_dir(hashindx.clone()).unwrap();
+
+        // This will create a shard every two elements
+        let mut index = HashIndex::new_from_path(hashindx.clone(), Some(2));
+
+        add_data(&mut index);
+
+        std::fs::remove_dir_all(hashindx).unwrap();
+    }
+
+    fn add_data(index: &mut HashIndex) {
         let usernames = vec![
             String::from("user1"),
             String::from("user2"),

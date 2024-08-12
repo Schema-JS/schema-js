@@ -1,5 +1,6 @@
 use crate::data_handler::DataHandler;
 use crate::errors::ShardErrors;
+use crate::shard::shards::UUID_BYTE_LEN;
 use crate::{I64_SIZE, U64_SIZE};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -9,7 +10,6 @@ use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 pub const DEFAULT_MAX_OFFSETS: u64 = 100;
-pub const UUID_BYTE_LEN: u64 = 16;
 
 // TODO: Header version
 
