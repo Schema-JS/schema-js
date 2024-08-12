@@ -1,5 +1,5 @@
 use crate::data_handler::DataHandler;
-use crate::errors::DataShardErrors;
+use crate::errors::ShardErrors;
 use crate::{I64_SIZE, U64_SIZE};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -152,12 +152,12 @@ impl DataShardHeader {
         max_offsets + last_used_offset + id_len + offsets_from_pos
     }
 
-    pub fn add_next_offset(&mut self, value: u64, file: &mut File) -> Result<(), DataShardErrors> {
+    pub fn add_next_offset(&mut self, value: u64, file: &mut File) -> Result<(), ShardErrors> {
         if let Some(available_index) = self.get_next_available_index() {
             // Write the new offset value to the file
             let offset_position = self.get_offset_pos_by_index(available_index);
             match offset_position {
-                None => return Err(DataShardErrors::OutOfPositions),
+                None => return Err(ShardErrors::OutOfPositions),
                 Some(pos) => {
                     let offset_bytes = value.to_le_bytes();
                     file.write_at(&offset_bytes, pos as u64)
@@ -167,7 +167,7 @@ impl DataShardHeader {
                 }
             }
         } else {
-            Err(DataShardErrors::OutOfPositions)
+            Err(ShardErrors::OutOfPositions)
         }
     }
 

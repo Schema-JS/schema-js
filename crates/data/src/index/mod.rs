@@ -2,7 +2,6 @@ pub mod composite_key;
 mod data;
 mod errors;
 mod implementations;
-mod index_child;
 mod index_type;
 mod keys;
 mod types;

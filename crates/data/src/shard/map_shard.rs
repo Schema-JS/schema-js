@@ -1,25 +1,22 @@
-use crate::data_shard::DataShard;
+use crate::shard::{Shard, ShardConfig};
 use crate::utils::fs::list_files_with_prefix;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 use uuid::Uuid;
 
 #[derive(Debug)]
-pub struct MapShard {
-    pub current_master_shard: DataShard,
-    pub past_master_shards: RwLock<HashMap<String, DataShard>>,
+pub struct MapShard<S: Shard<Opts>, Opts: ShardConfig> {
+    pub current_master_shard: S,
+    pub past_master_shards: RwLock<HashMap<String, S>>,
     pub shard_prefix: String,
     pub shards_folder: PathBuf,
-    pub max_offsets: Option<u64>,
+    config: Opts,
 }
 
-impl MapShard {
-    pub fn new<P: AsRef<Path> + Clone>(
-        shards_folder: P,
-        shard_prefix: &str,
-        max_offsets: Option<u64>,
-    ) -> Self {
+impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
+    pub fn new<P: AsRef<Path> + Clone>(shards_folder: P, shard_prefix: &str, config: Opts) -> Self {
         let shards_folder = shards_folder.as_ref().to_path_buf();
         let shard_files = list_files_with_prefix(&shards_folder, shard_prefix).unwrap();
         let mut sorted_files: Vec<(usize, String, PathBuf)> = Vec::new();
@@ -51,21 +48,25 @@ impl MapShard {
             if path != &current_master_shard {
                 past_master_shards.insert(
                     uuid.clone(),
-                    DataShard::new(path.clone(), None, Some(Uuid::parse_str(uuid).unwrap())),
+                    S::new(
+                        path.clone(),
+                        config.clone(),
+                        Some(Uuid::parse_str(uuid).unwrap()),
+                    ),
                 );
             }
         }
 
         MapShard {
-            current_master_shard: DataShard::new(
+            current_master_shard: S::new(
                 current_master_shard,
-                max_offsets.clone(),
+                config.clone(),
                 Some(maybe_new_shard_id),
             ),
             past_master_shards: RwLock::new(past_master_shards),
             shard_prefix: shard_prefix.to_string(),
             shards_folder,
-            max_offsets,
+            config,
         }
     }
 
@@ -102,7 +103,7 @@ impl MapShard {
 
         if !curr_master_has_space {
             let (shard_number, _, _) =
-                Self::extract_file_signature(self.current_master_shard.path.clone()).unwrap();
+                Self::extract_file_signature(self.current_master_shard.get_path().clone()).unwrap();
             let new_shard_number = shard_number + 1;
 
             let shard = {
@@ -112,8 +113,7 @@ impl MapShard {
                     shard_id.clone(),
                     new_shard_number,
                 ));
-                let new_shard =
-                    DataShard::new(shard_path, self.max_offsets.clone(), Some(shard_id));
+                let new_shard = S::new(shard_path, self.config.clone(), Some(shard_id));
                 new_shard
             };
 
@@ -131,7 +131,10 @@ impl MapShard {
 
 #[cfg(test)]
 mod test {
-    use crate::map_shard::MapShard;
+    use crate::shard::map_shard::MapShard;
+    use crate::shard::shards::data_shard::config::DataShardConfig;
+    use crate::shard::shards::data_shard::shard::DataShard;
+    use crate::shard::Shard;
     use std::sync::{Arc, RwLock};
     use uuid::Uuid;
 
@@ -140,7 +143,13 @@ mod test {
         let fake_empty_table_path = std::env::current_dir()
             .unwrap()
             .join("./test_cases/fake-db-folder/fake-empty-table");
-        let context = MapShard::new(fake_empty_table_path, "data_", None);
+
+        let context = MapShard::<DataShard, DataShardConfig>::new(
+            fake_empty_table_path,
+            "data_",
+            DataShardConfig { max_offsets: None },
+        );
+
         assert!(context.past_master_shards.read().unwrap().is_empty());
         assert_eq!(
             context
@@ -159,7 +168,11 @@ mod test {
         let fake_partial_folder_path = std::env::current_dir()
             .unwrap()
             .join("./test_cases/fake-db-folder/fake-partial-folder");
-        let context = MapShard::new(fake_partial_folder_path, "data_", None);
+        let context = MapShard::<DataShard, DataShardConfig>::new(
+            fake_partial_folder_path,
+            "data_",
+            DataShardConfig { max_offsets: None },
+        );
         assert!(!context.past_master_shards.read().unwrap().is_empty());
         assert_eq!(
             context
@@ -182,11 +195,15 @@ mod test {
         ));
         std::fs::create_dir(&fake_partial_folder_path).unwrap();
 
-        let map = RwLock::new(MapShard::new(
+        let context = MapShard::<DataShard, DataShardConfig>::new(
             fake_partial_folder_path.clone(),
             "data_",
-            Some(1),
-        ));
+            DataShardConfig {
+                max_offsets: Some(1),
+            },
+        );
+
+        let map = RwLock::new(context);
         let arc = Arc::new(map);
 
         let ref_map1 = arc.clone();

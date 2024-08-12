@@ -1,9 +1,10 @@
 use crate::data_handler::DataHandler;
-use crate::data_shard_header::DataShardHeader;
-use crate::errors::DataShardErrors;
+use crate::errors::ShardErrors;
+use crate::shard::shards::data_shard::config::DataShardConfig;
+use crate::shard::shards::data_shard::shard_header::DataShardHeader;
+use crate::shard::Shard;
 use crate::U64_SIZE;
 use serde::{Deserialize, Serialize};
-use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -17,41 +18,15 @@ pub struct DataShard {
 }
 
 impl DataShard {
-    pub fn new<P: AsRef<Path> + Clone>(
-        path: P,
-        max_offsets: Option<u64>,
-        uuid: Option<Uuid>,
-    ) -> Self {
-        let data_handler = unsafe { DataHandler::new(path.clone()) }.unwrap();
-        let arc_dh = Arc::new(data_handler);
-
-        let header = DataShardHeader::new_from_file(arc_dh.clone(), max_offsets, uuid);
-
-        DataShard {
-            path: path.as_ref().to_path_buf(),
-            data: arc_dh.clone(),
-            header: RwLock::new(header),
-        }
-    }
-
-    pub fn read_item_from_index(&self, index: usize) -> Result<Vec<u8>, DataShardErrors> {
-        let header = self.header.read().unwrap();
-        let offset_pos_in_header = header.get_offset_pos_by_index(index);
-        match offset_pos_in_header {
-            None => Err(DataShardErrors::UnknownOffset),
-            Some(pos_in_header) => self.read_item(pos_in_header),
-        }
-    }
-
     /// Reads data of type T from the given position to the next position in offsets
-    pub fn read_item(&self, offset_position_in_header: usize) -> Result<Vec<u8>, DataShardErrors> {
+    pub fn read_item(&self, offset_position_in_header: usize) -> Result<Vec<u8>, ShardErrors> {
         let header_read = self.header.read().unwrap();
 
         let item_pos =
             { header_read.get_offset_value_from_offset_header(offset_position_in_header) };
 
         match item_pos {
-            None => Err(DataShardErrors::UnknownOffset),
+            None => Err(ShardErrors::UnknownOffset),
             Some(start_pos) => {
                 let data_reader = self.data.read().unwrap();
                 let end_pos = {
@@ -79,7 +54,7 @@ impl DataShard {
                             end_pos
                         }
                     } else {
-                        return Err(DataShardErrors::UnknownOffset);
+                        return Err(ShardErrors::UnknownOffset);
                     };
 
                     read_up_to
@@ -89,14 +64,54 @@ impl DataShard {
 
                 let read_bytes = data_reader.read_pointer(start_pos, length);
                 match read_bytes {
-                    None => Err(DataShardErrors::ErrorReadingByteRange),
+                    None => Err(ShardErrors::ErrorReadingByteRange),
                     Some(b) => Ok(b),
                 }
             }
         }
     }
+}
 
-    pub fn insert_item(&self, item: Vec<u8>) -> Result<(), DataShardErrors> {
+impl Shard<DataShardConfig> for DataShard {
+    fn new(path: PathBuf, opts: DataShardConfig, uuid: Option<Uuid>) -> Self {
+        let data_handler = unsafe { DataHandler::new(path.clone()) }.unwrap();
+        let arc_dh = Arc::new(data_handler);
+        let header = DataShardHeader::new_from_file(arc_dh.clone(), opts.max_offsets, uuid);
+
+        DataShard {
+            path: path.clone(),
+            data: arc_dh.clone(),
+            header: RwLock::new(header),
+        }
+    }
+
+    fn get_last_index(&self) -> i64 {
+        let header_reader = self.header.read().unwrap();
+        let last_index = header_reader.get_last_offset_index();
+
+        last_index
+    }
+
+    fn read_item_from_index(&self, index: usize) -> Result<Vec<u8>, ShardErrors> {
+        let header = self.header.read().unwrap();
+        let offset_pos_in_header = header.get_offset_pos_by_index(index);
+        match offset_pos_in_header {
+            None => Err(ShardErrors::UnknownOffset),
+            Some(pos_in_header) => self.read_item(pos_in_header),
+        }
+    }
+
+    fn has_space(&self) -> bool {
+        let header = self.header.read().unwrap();
+
+        header.has_space()
+    }
+
+    fn get_path(&self) -> PathBuf {
+        self.path.clone()
+    }
+
+    fn insert_item(&self, data: Vec<u8>) -> Result<(), ShardErrors> {
         let has_space = { self.has_space() };
         if has_space {
             let mut header_write = self.header.write().unwrap();
@@ -107,7 +122,7 @@ impl DataShard {
                     .expect("Failed to seek to end of file");
 
                 // Write the item to the file
-                file.write_all(&item).expect("Failed to write item to file");
+                file.write_all(&data).expect("Failed to write item to file");
 
                 // Update the header with the new offset
                 header_write.add_next_offset(end_of_file, file).unwrap();
@@ -117,28 +132,24 @@ impl DataShard {
 
             match op {
                 Ok(_) => Ok(()),
-                Err(_) => Err(DataShardErrors::FlushingError),
+                Err(_) => Err(ShardErrors::FlushingError),
             }
         } else {
-            Err(DataShardErrors::OutOfPositions)
+            Err(ShardErrors::OutOfPositions)
         }
     }
 
-    pub fn has_space(&self) -> bool {
-        let header = self.header.read().unwrap();
-
-        header.has_space()
-    }
-
-    pub fn get_id(&self) -> String {
+    fn get_id(&self) -> String {
         self.header.read().unwrap().id.to_string()
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::data_shard::DataShard;
-    use crate::errors::DataShardErrors;
+    use crate::errors::ShardErrors;
+    use crate::shard::shards::data_shard::config::DataShardConfig;
+    use crate::shard::shards::data_shard::shard::DataShard;
+    use crate::shard::Shard;
     use std::fs::File;
     use std::io::Read;
     use std::sync::{Arc, RwLock};
@@ -152,7 +163,11 @@ mod test {
             .path()
             .join(format!("{}.bin", Uuid::new_v4().to_string()));
 
-        let data_shard = DataShard::new(file_path.clone(), Some(10), None);
+        let config = DataShardConfig {
+            max_offsets: Some(10),
+        };
+
+        let data_shard = DataShard::new(file_path.clone(), config, None);
 
         let strs = [
             "Hello World",
@@ -172,7 +187,7 @@ mod test {
         }
         /*
         unsafe {
-            let reader = data_shard.data.read().unwrap();
+            let reader = shards.data.read().unwrap();
             let map = reader.access_map();
             println!("{:?}", map[123..188].to_vec());
             println!("{:?}", reader.read_pointer(123, 65));
@@ -192,7 +207,7 @@ mod test {
         assert!(item.err().unwrap().is_out_of_positions());
 
         // let res: Vec<u64> = vec![104, 115, 128, 137, 142, 146, 147, 151, 156, 174];
-        // assert_eq!(res, data_shard.header.read().unwrap().offsets);
+        // assert_eq!(res, shards.header.read().unwrap().offsets);
     }
 
     #[tokio::test]
@@ -201,7 +216,12 @@ mod test {
         let file_path = temp_dir
             .path()
             .join(format!("{}.bin", Uuid::new_v4().to_string()));
-        let data_shard = DataShard::new(file_path.clone(), Some(10), None);
+
+        let config = DataShardConfig {
+            max_offsets: Some(10),
+        };
+
+        let data_shard = DataShard::new(file_path.clone(), config, None);
 
         let strs = [
             "Hello World",
@@ -220,7 +240,13 @@ mod test {
             data_shard.insert_item(data.as_bytes().to_vec()).unwrap();
         }
 
-        let new_data_shard = DataShard::new(file_path.clone(), Some(10), None);
+        let new_data_shard = DataShard::new(
+            file_path.clone(),
+            DataShardConfig {
+                max_offsets: Some(10),
+            },
+            None,
+        );
         /*let res: Vec<u64> = vec![104, 115, 128, 137, 142, 146, 147, 151, 156, 174];
         assert_eq!(res, new_data_shard.header.read().unwrap().offsets);*/
     }
@@ -232,7 +258,13 @@ mod test {
             .path()
             .join(format!("{}.bin", Uuid::new_v4().to_string()));
 
-        let data_shard = DataShard::new(file_path, Some(2), None);
+        let data_shard = DataShard::new(
+            file_path,
+            DataShardConfig {
+                max_offsets: Some(2),
+            },
+            None,
+        );
         let shard = Arc::new(RwLock::new(data_shard));
 
         let ref_shard = shard.clone();

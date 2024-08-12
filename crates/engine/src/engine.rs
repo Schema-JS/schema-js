@@ -87,6 +87,7 @@ impl SchemeJsEngine {
 mod test {
     use crate::engine::SchemeJsEngine;
     use crate::engine_table::EngineTable;
+    use schemajs_data::shard::Shard;
     use schemajs_primitives::column::Column;
     use schemajs_primitives::table::Table;
     use schemajs_primitives::types::DataTypes;
@@ -154,7 +155,7 @@ mod test {
                 .unwrap()
                 .get_table("users")
                 .unwrap();
-            table.temp_shards.insert_row(b"1".to_vec());
+            table.shard_collection.temps.insert_row(b"1".to_vec());
         });
 
         let ref_shard2 = Arc::clone(&arc);
@@ -165,7 +166,7 @@ mod test {
                 .unwrap()
                 .get_table("users")
                 .unwrap();
-            table.temp_shards.insert_row(b"2".to_vec());
+            table.shard_collection.temps.insert_row(b"2".to_vec());
         });
 
         thread_1.join().unwrap();
@@ -176,7 +177,7 @@ mod test {
             let mut reader = db_engine.write().unwrap();
             let mut db = reader.find_by_name("rust-test".to_string()).unwrap();
             let users = db.get_table("users").unwrap();
-            let temp_shards = &users.temp_shards;
+            let temp_shards = &users.shard_collection.temps;
 
             let reader = temp_shards.temp_shards.read().unwrap();
             let shards = reader.iter().next().unwrap();

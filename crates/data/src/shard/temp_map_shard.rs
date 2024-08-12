@@ -1,44 +1,45 @@
-use crate::data_shard::DataShard;
-use crate::map_shard::MapShard;
-use crate::temp_offset_types::TempOffsetTypes;
-use std::collections::HashMap;
+use crate::shard::map_shard::MapShard;
+use crate::shard::shards::data_shard::shard::DataShard;
+use crate::shard::{Shard, ShardConfig, TempShardConfig};
 use std::ops::Range;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock, RwLockWriteGuard};
+use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 #[derive(Debug)]
-pub struct TempMapShard {
+pub struct TempMapShard<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>> {
     folder: PathBuf,
     prefix: String,
-    max_offsets: TempOffsetTypes,
-    parent_shard: Arc<RwLock<MapShard>>,
-    pub temp_shards: RwLock<Vec<DataShard>>,
+    parent_shard: Arc<RwLock<MapShard<S, Opts>>>,
+    pub temp_shards: RwLock<Vec<S>>,
+    temp_opts: TempOpts,
 }
 
-impl TempMapShard {
+impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
+    TempMapShard<S, Opts, TempOpts>
+{
     pub fn new(
         folder: PathBuf,
-        parent_shard: Arc<RwLock<MapShard>>,
-        max_offsets: TempOffsetTypes,
         prefix: &str,
+        parent_shard: Arc<RwLock<MapShard<S, Opts>>>,
+        temp_opts: TempOpts,
     ) -> Self {
         TempMapShard {
             parent_shard,
             folder,
             prefix: prefix.to_string(),
-            max_offsets,
             temp_shards: RwLock::new(vec![]),
+            temp_opts,
         }
     }
 
-    fn create_shard(&self) -> DataShard {
+    fn create_shard(&self) -> S {
         let shard_path = self.folder.join(format!(
             "{}{}",
             self.prefix.clone(),
             Uuid::new_v4().to_string()
         ));
-        DataShard::new(shard_path, self.max_offsets.get_real_offset(), None)
+        S::new(shard_path, self.temp_opts.to_config(), None)
     }
 
     pub fn insert_row(&self, data: Vec<u8>) {
@@ -67,10 +68,9 @@ impl TempMapShard {
         }
     }
 
-    fn get_reconciliation_data(shard: &DataShard) -> (&DataShard, Range<i64>) {
+    fn get_reconciliation_data(shard: &S) -> (&S, Range<i64>) {
         let indexes = {
-            let header_reader = shard.header.read().unwrap();
-            let last_index = header_reader.get_last_offset_index();
+            let last_index = shard.get_last_index();
             if last_index < 0 {
                 0..0
             } else {
@@ -81,7 +81,7 @@ impl TempMapShard {
         (shard, indexes)
     }
 
-    fn reconcile(from: &DataShard, target: &mut MapShard) {
+    fn reconcile(from: &S, target: &mut MapShard<S, Opts>) {
         let (shard, indexes) = Self::get_reconciliation_data(from);
         for item_index in indexes {
             let binary_item = shard.read_item_from_index(item_index as usize).unwrap();
@@ -124,8 +124,11 @@ impl TempMapShard {
 
 #[cfg(test)]
 mod test {
-    use crate::map_shard::MapShard;
-    use crate::temp_map_shard::TempMapShard;
+    use crate::shard::map_shard::MapShard;
+    use crate::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
+    use crate::shard::shards::data_shard::shard::DataShard;
+    use crate::shard::temp_map_shard::TempMapShard;
+    use crate::shard::Shard;
     use crate::temp_offset_types::TempOffsetTypes;
     use std::path::PathBuf;
     use std::sync::{Arc, RwLock};
@@ -140,17 +143,21 @@ mod test {
             std::fs::create_dir(data_path.clone().clone()).unwrap();
         }
 
-        let parent_shard = Arc::new(RwLock::new(MapShard::new(
+        let ctx = MapShard::<DataShard, DataShardConfig>::new(
             data_path.clone(),
             "localdata_",
-            None,
-        )));
+            DataShardConfig { max_offsets: None },
+        );
 
-        let shard = TempMapShard::new(
+        let parent_shard = Arc::new(RwLock::new(ctx));
+
+        let shard = TempMapShard::<DataShard, DataShardConfig, TempDataShardConfig>::new(
             data_path.clone(),
-            parent_shard.clone(),
-            TempOffsetTypes::Custom(Some(2)),
             "tempdata_",
+            parent_shard.clone(),
+            TempDataShardConfig {
+                max_offsets: TempOffsetTypes::Custom(Some(2)),
+            },
         );
 
         shard.insert_row("0:Hello world".as_bytes().to_vec());

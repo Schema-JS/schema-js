@@ -3,8 +3,11 @@ use crate::serializer::borsh::BorshRowSerializer;
 use crate::serializer::RowSerializer;
 use crate::validation_error::ValidationError;
 use deno_core::serde_json;
-use schemajs_data::map_shard::MapShard;
-use schemajs_data::temp_map_shard::TempMapShard;
+use schemajs_data::shard::map_shard::MapShard;
+use schemajs_data::shard::shard_collection::ShardCollection;
+use schemajs_data::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
+use schemajs_data::shard::shards::data_shard::shard::DataShard;
+use schemajs_data::shard::temp_map_shard::TempMapShard;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_dirs::create_schema_js_table;
 use schemajs_primitives::table::Table;
@@ -16,8 +19,7 @@ use std::sync::{Arc, RwLock};
 pub struct EngineTable {
     pub tbl_folder: PathBuf,
     pub prim_table: Table,
-    pub data: Arc<RwLock<MapShard>>,
-    pub temp_shards: TempMapShard,
+    pub shard_collection: ShardCollection<DataShard, DataShardConfig, TempDataShardConfig>,
     pub serializer: Arc<dyn RowSerializer>,
 }
 
@@ -25,22 +27,19 @@ impl EngineTable {
     pub fn new(base_path: Option<PathBuf>, db: &str, table: Table) -> Self {
         let table_folder_path = create_schema_js_table(base_path, db, table.name.as_str());
 
-        let data = Arc::new(RwLock::new(MapShard::new(
+        let create_shard_collection = ShardCollection::new(
             table_folder_path.clone(),
             "data_",
-            None,
-        )));
+            DataShardConfig { max_offsets: None },
+            TempDataShardConfig {
+                max_offsets: TempOffsetTypes::Custom(Some(1000)),
+            },
+        );
 
         EngineTable {
-            tbl_folder: table_folder_path.clone(),
+            tbl_folder: table_folder_path,
             prim_table: table,
-            data: data.clone(),
-            temp_shards: TempMapShard::new(
-                table_folder_path,
-                data.clone(),
-                TempOffsetTypes::Custom(Some(1000)),
-                "datatemp-",
-            ),
+            shard_collection: create_shard_collection,
             serializer: Arc::new(BorshRowSerializer::default()),
         }
     }
@@ -83,7 +82,7 @@ impl EngineTable {
             .serializer
             .serialize(&item)
             .map_err(InsertionError::SerializationError)?;
-        self.temp_shards.insert_row(val);
+        self.shard_collection.temps.insert_row(val);
         Ok(())
     }
 }
