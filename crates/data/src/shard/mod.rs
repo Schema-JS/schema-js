@@ -80,7 +80,7 @@ pub trait Shard<Opts: ShardConfig> {
 
     fn read_item_from_index(&self, index: usize) -> Result<Vec<u8>, ShardErrors>;
 
-    fn insert_item(&self, data: Vec<u8>) -> Result<(), ShardErrors>;
+    fn insert_item(&self, data: Vec<u8>) -> Result<u64, ShardErrors>;
 
     fn get_id(&self) -> String;
 }

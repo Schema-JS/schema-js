@@ -3,17 +3,15 @@ use crate::serializer::borsh::BorshRowSerializer;
 use crate::serializer::RowSerializer;
 use crate::validation_error::ValidationError;
 use deno_core::serde_json;
-use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shard_collection::ShardCollection;
 use schemajs_data::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
 use schemajs_data::shard::shards::data_shard::shard::DataShard;
-use schemajs_data::shard::temp_map_shard::TempMapShard;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_dirs::create_schema_js_table;
+use schemajs_primitives::column::types::DataTypes;
 use schemajs_primitives::table::Table;
-use schemajs_primitives::types::DataTypes;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct EngineTable {
@@ -69,6 +67,7 @@ impl EngineTable {
                         return Err(ValidationError::ExpectedBoolean(name.clone()));
                     }
                 }
+                _ => {}
             }
         }
 
@@ -90,9 +89,10 @@ impl EngineTable {
 #[cfg(test)]
 mod test {
     use crate::engine_table::EngineTable;
+    use schemajs_primitives::column::types::DataTypes;
     use schemajs_primitives::column::Column;
+    use schemajs_primitives::table::metadata::TableMetadata;
     use schemajs_primitives::table::Table;
-    use schemajs_primitives::types::DataTypes;
     use std::collections::HashMap;
 
     fn get_common_table() -> Table {
@@ -122,7 +122,8 @@ mod test {
         let table = Table {
             name: "users".to_string(),
             columns: cols,
-            module_id: None,
+            indexes: vec![],
+            metadata: TableMetadata { module_id: None },
         };
 
         table

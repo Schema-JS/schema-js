@@ -118,7 +118,7 @@ impl Shard<DataShardConfig> for DataShard {
         self.path.clone()
     }
 
-    fn insert_item(&self, data: Vec<u8>) -> Result<(), ShardErrors> {
+    fn insert_item(&self, data: Vec<u8>) -> Result<u64, ShardErrors> {
         let has_space = { self.has_space() };
         if has_space {
             let mut header_write = self.header.write().unwrap();
@@ -134,11 +134,11 @@ impl Shard<DataShardConfig> for DataShard {
                 // Update the header with the new offset
                 header_write.add_next_offset(end_of_file, file).unwrap();
 
-                Ok(())
+                Ok(header_write.get_last_offset_index())
             });
 
             match op {
-                Ok(_) => Ok(()),
+                Ok(offset) => Ok(offset as u64),
                 Err(_) => Err(ShardErrors::FlushingError),
             }
         } else {

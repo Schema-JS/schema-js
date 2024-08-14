@@ -15,10 +15,14 @@ pub struct HashIndex {
 }
 
 impl HashIndex {
-    fn new_from_path<P: AsRef<Path> + Clone>(path: P, capacity: Option<u64>) -> Self {
+    pub fn new_from_path<P: AsRef<Path> + Clone>(
+        path: P,
+        index_name: Option<String>,
+        capacity: Option<u64>,
+    ) -> Self {
         let index_shard = IndexShard::new(
             path,
-            "hashindx".to_string(),
+            index_name.unwrap_or_else(|| "hashindx".to_string()),
             HASH_INDEX_KEY_SIZE,
             HASH_INDEX_VALUE_SIZE,
             capacity,
@@ -41,7 +45,7 @@ impl HashIndex {
 }
 
 impl Index<IndexKeySha256> for HashIndex {
-    fn insert(&mut self, key: IndexKeySha256, row_position: u64) {
+    fn insert(&self, key: IndexKeySha256, row_position: u64) {
         self.index
             .insert(key, row_position.to_le_bytes().to_vec().into());
     }
@@ -75,7 +79,7 @@ mod test {
         let hashindx = temp_dir.as_ref().to_path_buf().join("hashindx");
         std::fs::create_dir(hashindx.clone()).unwrap();
 
-        let mut index = HashIndex::new_from_path(hashindx.clone(), None);
+        let mut index = HashIndex::new_from_path(hashindx.clone(), None, None);
 
         add_data(&mut index);
 
@@ -90,7 +94,7 @@ mod test {
         std::fs::create_dir(hashindx.clone()).unwrap();
 
         // This will create a shard every two elements
-        let mut index = HashIndex::new_from_path(hashindx.clone(), Some(2));
+        let mut index = HashIndex::new_from_path(hashindx.clone(), None, Some(2));
 
         add_data(&mut index);
 

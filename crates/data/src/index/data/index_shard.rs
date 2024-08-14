@@ -98,7 +98,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         (K::from(key_unit), V::from(val_unit), el)
     }
 
-    pub fn insert(&mut self, key: K, value: V) {
+    pub fn insert(&self, key: K, value: V) {
         let key_vec: Vec<u8> = key.into();
         let value_vec: Vec<u8> = value.into();
 
@@ -187,7 +187,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         IndexDataUnit::new(build_entry)
     }
 
-    fn keep_binary_order(&mut self) {
+    fn keep_binary_order(&self) {
         let mut i = {
             self.data
                 .read()

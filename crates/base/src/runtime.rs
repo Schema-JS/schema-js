@@ -173,7 +173,7 @@ impl SchemeJsRuntime {
             }
         };
 
-        table.set_module_id(mod_id);
+        table.metadata.set_module_id(mod_id);
 
         Ok((specifier, mod_id, table))
     }

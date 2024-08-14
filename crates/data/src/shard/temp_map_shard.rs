@@ -1,10 +1,23 @@
 use crate::shard::map_shard::MapShard;
 use crate::shard::shards::data_shard::shard::DataShard;
 use crate::shard::{Shard, ShardConfig, TempShardConfig};
+use std::fmt::{Debug, Formatter};
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
+
+pub struct OnReconcileCb {
+    func: Option<Box<dyn Fn(&Vec<u8>, usize) -> Result<(), ()>>>,
+}
+
+impl Debug for OnReconcileCb {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Function pointer")
+    }
+}
+
+pub type OnReconcileFn = Box<dyn Fn(&Vec<u8>, usize) -> Result<(), ()>>;
 
 #[derive(Debug)]
 pub struct TempMapShard<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>> {
@@ -13,6 +26,7 @@ pub struct TempMapShard<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardCo
     parent_shard: Arc<RwLock<MapShard<S, Opts>>>,
     pub temp_shards: RwLock<Vec<S>>,
     temp_opts: TempOpts,
+    on_reconcile: OnReconcileCb,
 }
 
 impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
@@ -30,7 +44,12 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
             prefix: prefix.to_string(),
             temp_shards: RwLock::new(vec![]),
             temp_opts,
+            on_reconcile: OnReconcileCb { func: None },
         }
+    }
+
+    pub fn set_on_reconcile(&mut self, data: Box<dyn Fn(&Vec<u8>, usize) -> Result<(), ()>>) {
+        self.on_reconcile = OnReconcileCb { func: Some(data) };
     }
 
     fn create_shard(&self) -> S {
@@ -81,11 +100,20 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         (shard, indexes)
     }
 
-    fn reconcile(from: &S, target: &mut MapShard<S, Opts>) {
+    // Maybe async?
+    fn call_on_reconcile(&self, data: &Vec<u8>, pos: usize) -> Result<(), ()> {
+        match &self.on_reconcile.func {
+            None => Ok(()),
+            Some(cb) => cb(data, pos),
+        }
+    }
+
+    fn reconcile(&self, from: &S, target: &mut MapShard<S, Opts>) {
         let (shard, indexes) = Self::get_reconciliation_data(from);
         for item_index in indexes {
             let binary_item = shard.read_item_from_index(item_index as usize).unwrap();
-            target.insert_row(binary_item)
+            let pos = target.insert_row(binary_item.clone());
+            self.call_on_reconcile(&binary_item, pos).unwrap();
         }
     }
 
@@ -94,7 +122,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         let mut temp_shards_writer = self.temp_shards.write().unwrap();
 
         for from_shard in temp_shards_writer.iter() {
-            Self::reconcile(from_shard, &mut parent_writer);
+            self.reconcile(from_shard, &mut parent_writer);
         }
 
         temp_shards_writer.clear()
@@ -108,7 +136,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
             if let Some(index) = index {
                 if let Some(shard) = reader.get(index) {
                     let mut parent_shard = self.parent_shard.write().unwrap();
-                    Self::reconcile(shard, &mut parent_shard);
+                    self.reconcile(shard, &mut parent_shard);
                     index
                 } else {
                     return;

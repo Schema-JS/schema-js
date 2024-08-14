@@ -1,8 +1,8 @@
 pub mod collection;
 pub mod column;
 pub mod database;
+mod index;
 pub mod table;
-pub mod types;
 
 deno_core::extension!(
     sjs_primitives,

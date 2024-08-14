@@ -1,4 +1,5 @@
-use crate::types::DataTypes;
+pub mod types;
+use crate::column::types::DataTypes;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

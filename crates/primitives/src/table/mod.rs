@@ -1,5 +1,8 @@
+pub mod metadata;
+
 use crate::column::Column;
-use deno_core::ModuleId;
+use crate::index::Index;
+use crate::table::metadata::TableMetadata;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -7,7 +10,8 @@ use std::collections::HashMap;
 pub struct Table {
     pub name: String,
     pub columns: HashMap<String, Column>,
-    pub module_id: Option<ModuleId>,
+    pub indexes: Vec<Index>,
+    pub metadata: TableMetadata,
 }
 
 impl Table {
@@ -15,12 +19,15 @@ impl Table {
         Table {
             name: name.to_string(),
             columns: HashMap::new(),
-            module_id: None,
+            metadata: Default::default(),
+            indexes: vec![],
         }
     }
 
-    pub fn set_module_id(&mut self, module_id: ModuleId) {
-        self.module_id = Some(module_id);
+    // TODO: Handle known index
+    pub fn add_index(mut self, index: Index) -> Self {
+        self.indexes.push(index);
+        self
     }
 
     pub fn add_column(mut self, column: Column) -> Self {

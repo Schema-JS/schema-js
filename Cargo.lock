@@ -2343,7 +2343,27 @@ name = "schemajs_primitives"
 version = "0.1.0"
 dependencies = [
  "deno_core",
+ "enum-as-inner",
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemajs_query"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "anyhow",
+ "borsh",
+ "chashmap",
+ "enum-as-inner",
+ "schemajs_data",
+ "schemajs_dirs",
+ "schemajs_primitives",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]

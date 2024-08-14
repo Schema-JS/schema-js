@@ -110,7 +110,7 @@ impl Shard<KvShardConfig> for KvShard {
         }
     }
 
-    fn insert_item(&self, data: Vec<u8>) -> Result<(), ShardErrors> {
+    fn insert_item(&self, data: Vec<u8>) -> Result<u64, ShardErrors> {
         let mut writer = self.data.write().unwrap();
         writer
             .operate(|file| {
@@ -127,7 +127,7 @@ impl Shard<KvShardConfig> for KvShard {
 
                 Ok(new_len)
             })
-            .map(|_| ())
+            .map(|e| e)
             .map_err(|e| ShardErrors::ErrorAddingEntry)
     }
 

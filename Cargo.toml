@@ -10,6 +10,7 @@ members = [
     "./crates/module_loader",
     "./crates/data",
     "./crates/dirs",
+    "./crates/query",
 ]
 resolver = "2"
 
@@ -63,6 +64,7 @@ serde_json = "1.0.122"
 borsh = { version = "1.5.1", features = ["derive", "borsh-derive"] }
 memmap2 = "0.9.4"
 sha2 = "0.10.8"
+ahash = "0.8.11"
 
 [profile.dind]
 inherits = "dev"

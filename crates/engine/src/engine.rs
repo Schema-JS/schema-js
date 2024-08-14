@@ -88,7 +88,7 @@ mod test {
     use crate::engine::SchemeJsEngine;
     use crate::engine_table::EngineTable;
     use schemajs_data::shard::Shard;
-    use schemajs_primitives::column::Column;
+    use schemajs_primitives::r#mod::Column;
     use schemajs_primitives::table::Table;
     use schemajs_primitives::types::DataTypes;
     use std::collections::HashMap;
