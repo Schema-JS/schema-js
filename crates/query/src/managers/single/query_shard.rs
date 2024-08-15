@@ -1,3 +1,4 @@
+use crate::errors::QueryError;
 use crate::managers::single::query_shard_entry::QueryShardEntry;
 use crate::primitives::Row;
 use chashmap::CHashMap;
@@ -23,11 +24,17 @@ impl<T: Row<T>> QueryShard<T> {
         }
     }
 
-    pub fn insert(&self, table: Table, data: T) -> Uuid {
-        let uuid = data.get_value(&Table::get_internal_uid()).unwrap();
+    pub fn insert(&self, table: Table, data: T) -> Result<Uuid, QueryError> {
+        let uuid = data
+            .get_value(&Table::get_internal_uid())
+            .ok_or(QueryError::UnknownUid)?;
+
+        let serialized_value = data
+            .serialize()
+            .map_err(|e| QueryError::InvalidSerialization)?;
 
         if let Some(entry) = self.table_shards.get(&table.name) {
-            entry.data.temps.insert_row(data.serialize().unwrap());
+            entry.data.temps.insert_row(serialized_value);
         } else {
             let shard = QueryShardEntry::<T>::new(
                 format!("{}_{}", self.scheme_name, self.scheme_uuid),
@@ -35,10 +42,12 @@ impl<T: Row<T>> QueryShard<T> {
                 table.clone(),
             );
 
+            shard.data.temps.insert_row(serialized_value);
+
             self.table_shards.insert(table.name.clone(), shard);
         }
 
         let uuid = uuid.as_uuid().unwrap().clone();
-        uuid
+        Ok(uuid)
     }
 }

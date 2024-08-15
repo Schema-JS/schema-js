@@ -1,6 +1,7 @@
 pub mod query_shard;
 pub mod query_shard_entry;
 
+use crate::errors::QueryError;
 use crate::managers::single::query_shard::QueryShard;
 use crate::primitives::Row;
 use chashmap::CHashMap;
@@ -53,22 +54,27 @@ impl<T: Row<T>> SingleQueryManager<T> {
         &self.shards[index]
     }
 
-    pub fn insert(&self, row: T) -> Option<Uuid> {
+    pub fn insert(&self, row: T) -> Result<Uuid, QueryError> {
         let table_name = row.get_table_name();
         let table = self.tables.get(&table_name);
 
         if let Some(table) = table {
             let primary_key = table.primary_key.clone();
-            let column = table.get_column(primary_key.as_str()).unwrap(); // TODO
-            let val = row.get_value(column).unwrap(); // TODO
+            let column = table
+                .get_column(primary_key.as_str())
+                .ok_or(QueryError::UnknownPrimaryColumn(primary_key.clone()))?;
+            let val = row
+                .get_value(column)
+                .ok_or(QueryError::ValueNotPresent(primary_key))?;
+
             let shard_key = row.hash_key(val.to_string());
 
             let shard_index = shard_key % self.num_shards as u64;
             let shard = self.get_shard(shard_index as usize);
 
-            Some(shard.insert(table.clone(), row))
+            Ok(shard.insert(table.clone(), row)?)
         } else {
-            None
+            Err(QueryError::InvalidTable(table_name))
         }
     }
 }

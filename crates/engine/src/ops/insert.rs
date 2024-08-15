@@ -1,6 +1,7 @@
 use crate::engine::SchemeJsEngine;
 use crate::rows::json_row::{RowData, RowJson};
 use deno_core::{op2, serde_json, OpState};
+use schemajs_query::errors::QueryError;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -13,7 +14,7 @@ pub async fn op_engine_insert_row(
     #[string] db_name: String,
     #[string] table_name: String,
     #[serde] mut row: serde_json::Value,
-) -> Option<Uuid> {
+) -> Result<Uuid, QueryError> {
     let mut mut_state = state.borrow_mut();
     let state = mut_state.borrow_mut::<Arc<SchemeJsEngine>>().clone();
 

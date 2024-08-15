@@ -2347,6 +2347,7 @@ dependencies = [
  "enum-as-inner",
  "serde",
  "serde_json",
+ "thiserror",
  "uuid",
 ]
 
