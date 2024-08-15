@@ -2293,6 +2293,7 @@ dependencies = [
  "schemajs_data",
  "schemajs_dirs",
  "schemajs_primitives",
+ "schemajs_query",
  "serde",
  "serde_json",
  "thiserror",
@@ -2346,6 +2347,7 @@ dependencies = [
  "enum-as-inner",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

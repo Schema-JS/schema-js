@@ -6,6 +6,7 @@ export class Column {
     public defaultValue?: string;
     public comment?: string;
     public required: boolean = false;
+    public primaryKey: boolean = false;
 
     constructor(name: string, dataType?: DataTypes) {
         this.name = name;

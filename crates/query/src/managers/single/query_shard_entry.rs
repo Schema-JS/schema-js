@@ -11,14 +11,14 @@ use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_dirs::create_schema_js_table;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::table::Table;
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub struct QueryShardEntry<T: Row<T> + Hash> {
+#[derive(Debug)]
+pub struct QueryShardEntry<T: Row<T>> {
     pub data: ShardCollection<DataShard, DataShardConfig, TempDataShardConfig>,
     pub table: Table,
     pub indexes: Arc<CHashMap<String, HashIndex>>,
@@ -28,7 +28,7 @@ pub struct QueryShardEntry<T: Row<T> + Hash> {
     _key_marker: PhantomData<T>,
 }
 
-impl<T: Row<T> + Hash> QueryShardEntry<T> {
+impl<T: Row<T>> QueryShardEntry<T> {
     pub fn new(scheme_name: String, table_name: String, table: Table) -> Self {
         let uuid = Uuid::new_v4();
         let table_path = create_schema_js_table(
@@ -51,10 +51,14 @@ impl<T: Row<T> + Hash> QueryShardEntry<T> {
         let mut indexes = CHashMap::new();
 
         for index in &table.indexes {
+            let path = table_path.join("indx");
+            if !path.exists() {
+                std::fs::create_dir(path.clone()).unwrap();
+            }
             indexes.insert(
                 index.name.clone(),
                 HashIndex::new_from_path(
-                    table_path.join("indx"),
+                    path,
                     Some(format!("{}-{}", uuid.to_string(), index.name)),
                     Some(10_000_000),
                 ),
@@ -66,7 +70,7 @@ impl<T: Row<T> + Hash> QueryShardEntry<T> {
             indexes: Arc::new(indexes),
             path: table_path,
             uuid,
-            table,
+            table: table.clone(),
             _key_marker: PhantomData,
         };
 
@@ -77,22 +81,29 @@ impl<T: Row<T> + Hash> QueryShardEntry<T> {
 
     pub fn init(&mut self) {
         let indexes = self.indexes.clone();
+        let table = self.table.clone();
         self.data.temps.set_on_reconcile(Box::new(move |row, pos| {
             let row: T = T::from(row.clone());
-            Self::insert_indexes(indexes.clone(), &row, pos);
+            Self::insert_indexes(table.clone(), indexes.clone(), &row, pos);
             Ok(())
         }));
     }
 
-    pub fn insert_indexes(indexes: Arc<CHashMap<String, HashIndex>>, data: &T, pos_index: usize) {
-        let table = data.get_table();
+    pub fn insert_indexes(
+        table: Table,
+        indexes: Arc<CHashMap<String, HashIndex>>,
+        data: &T,
+        pos_index: usize,
+    ) {
         for index in &table.indexes {
             let mut can_index = false;
             let mut composite_key_vals: Vec<(String, String)> = vec![];
 
             // Loop over each column in the index
             for index_col in &index.members {
-                let val = data.get_value(index_col.clone()).unwrap_or(DataValue::Null);
+                let val = data
+                    .get_value(table.get_column(index_col).unwrap())
+                    .unwrap_or(DataValue::Null);
 
                 if !val.is_null() {
                     can_index = true;

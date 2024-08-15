@@ -22,3 +22,4 @@ borsh.workspace = true
 enum-as-inner.workspace = true
 thiserror.workspace = true
 walkdir.workspace = true
+schemajs_query = { version = "0.1.0", path = "../query" }

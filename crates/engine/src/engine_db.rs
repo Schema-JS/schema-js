@@ -1,13 +1,15 @@
-use crate::engine_table::EngineTable;
+use crate::rows::json_row::RowJson;
 use schemajs_dirs::create_scheme_js_db;
-use std::collections::HashMap;
+use schemajs_primitives::table::Table;
+use schemajs_query::managers::single::SingleQueryManager;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct EngineDb {
     pub db_folder: PathBuf,
+    pub query_manager: Arc<SingleQueryManager<RowJson>>,
     pub name: String,
-    pub tables: HashMap<String, EngineTable>,
 }
 
 impl EngineDb {
@@ -16,20 +18,14 @@ impl EngineDb {
 
         EngineDb {
             name: name.to_string(),
-            tables: HashMap::new(),
             db_folder,
+            query_manager: Arc::new(SingleQueryManager::new(name.to_string(), 10)),
         }
     }
 
-    pub fn add_table(&mut self, table: EngineTable) {
-        self.tables.insert(table.prim_table.name.clone(), table);
-    }
-
-    pub fn get_table(&mut self, name: &str) -> Option<&mut EngineTable> {
-        self.tables.get_mut(name)
-    }
-
-    pub fn get_table_ref(&self, name: &str) -> Option<&EngineTable> {
-        self.tables.get(name)
+    pub fn add_table(&self, table: Table) {
+        self.query_manager
+            .tables
+            .insert(table.name.to_string(), table);
     }
 }

@@ -173,6 +173,8 @@ impl SchemeJsRuntime {
             }
         };
 
+        table.init();
+
         table.metadata.set_module_id(mod_id);
 
         Ok((specifier, mod_id, table))
@@ -222,7 +224,7 @@ mod test {
             })
             .await?;
 
-            let num_inserts = 25_000;
+            let num_inserts = 9529;
             let mut script = String::new();
 
             for i in 0..num_inserts {

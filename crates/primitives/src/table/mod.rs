@@ -1,5 +1,6 @@
 pub mod metadata;
 
+use crate::column::types::DataTypes;
 use crate::column::Column;
 use crate::index::Index;
 use crate::table::metadata::TableMetadata;
@@ -11,6 +12,8 @@ pub struct Table {
     pub name: String,
     pub columns: HashMap<String, Column>,
     pub indexes: Vec<Index>,
+    pub primary_key: String,
+    #[serde(skip_serializing, skip_deserializing)]
     pub metadata: TableMetadata,
 }
 
@@ -18,9 +21,29 @@ impl Table {
     pub fn new(name: &str) -> Self {
         Table {
             name: name.to_string(),
-            columns: HashMap::new(),
+            columns: HashMap::from([("_uid".to_string(), Self::get_internal_uid())]),
             metadata: Default::default(),
-            indexes: vec![],
+            primary_key: "_uid".to_string(),
+            indexes: vec![Self::get_internal_uid_index()],
+        }
+    }
+
+    pub fn init(&mut self) {
+        self.columns
+            .insert("_uid".to_string(), Self::get_internal_uid());
+        self.indexes.push(Self::get_internal_uid_index());
+    }
+
+    pub fn get_internal_uid() -> Column {
+        Column::new("_uid", DataTypes::Uuid)
+            .set_required(true)
+            .set_primary_key(true)
+    }
+
+    fn get_internal_uid_index() -> Index {
+        Index {
+            name: "uidindx".to_string(),
+            members: vec!["_uid".to_string()],
         }
     }
 
@@ -31,6 +54,14 @@ impl Table {
     }
 
     pub fn add_column(mut self, column: Column) -> Self {
+        if column.primary_key {
+            if self.primary_key == "_uid".to_string() {
+                self.primary_key = column.name.clone();
+            } else {
+                todo!("Handle");
+            }
+        }
+
         self.columns.insert(column.name.clone(), column);
         self
     }

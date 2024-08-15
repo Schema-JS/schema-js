@@ -7,6 +7,7 @@ mod ops;
 mod query_error;
 pub mod validation_error;
 
+mod rows;
 pub mod serializer;
 pub mod utils;
 

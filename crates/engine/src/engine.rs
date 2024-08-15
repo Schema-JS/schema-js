@@ -65,7 +65,7 @@ impl SchemeJsEngine {
         let data_path_dir = self.data_path_dir.clone();
         let mut db = self.find_by_name(schema_name.to_string()).unwrap();
         for table in loaded_tables {
-            db.add_table(EngineTable::new(data_path_dir.clone(), schema_name, table));
+            db.add_table(table);
         }
     }
 

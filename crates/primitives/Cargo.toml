@@ -12,3 +12,4 @@ deno_core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 enum-as-inner.workspace = true
+uuid.workspace = true
