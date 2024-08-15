@@ -1,4 +1,5 @@
 use enum_as_inner::EnumAsInner;
+use schemajs_data::errors::ShardErrors;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -21,4 +22,7 @@ pub enum QueryError {
 
     #[error("Invalid Insertion")]
     InvalidInsertion,
+
+    #[error("A Shard Error has occured")]
+    ShardError(#[from] ShardErrors),
 }

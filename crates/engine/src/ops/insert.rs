@@ -37,5 +37,9 @@ pub async fn op_engine_insert_row(
         value: row,
     }));
 
+    if insert.is_err() {
+        println!("Error");
+    }
+
     insert
 }

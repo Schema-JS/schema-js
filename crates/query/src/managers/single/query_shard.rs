@@ -34,7 +34,7 @@ impl<T: Row<T>> QueryShard<T> {
             .map_err(|e| QueryError::InvalidSerialization)?;
 
         if let Some(entry) = self.table_shards.get(&table.name) {
-            entry.data.temps.insert_row(serialized_value);
+            entry.data.temps.insert_row(serialized_value)?;
         } else {
             let shard = QueryShardEntry::<T>::new(
                 format!("{}_{}", self.scheme_name, self.scheme_uuid),
@@ -42,7 +42,7 @@ impl<T: Row<T>> QueryShard<T> {
                 table.clone(),
             );
 
-            shard.data.temps.insert_row(serialized_value);
+            shard.data.temps.insert_row(serialized_value)?;
 
             self.table_shards.insert(table.name.clone(), shard);
         }

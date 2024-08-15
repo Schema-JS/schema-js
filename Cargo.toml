@@ -75,3 +75,6 @@ debug-assertions = false
 
 [profile.release]
 lto = true
+
+[env]
+RUST_BACKTRACE = "1"

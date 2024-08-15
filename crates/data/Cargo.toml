@@ -18,3 +18,4 @@ memmap2.workspace = true
 sha2.workspace = true
 rand.workspace = true
 indexmap.workspace = true
+thiserror.workspace = true

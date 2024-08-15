@@ -2270,6 +2270,7 @@ dependencies = [
  "serde",
  "sha2",
  "tempfile",
+ "thiserror",
  "tokio",
  "uuid",
 ]

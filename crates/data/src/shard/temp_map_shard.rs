@@ -1,3 +1,4 @@
+use crate::errors::ShardErrors;
 use crate::shard::map_shard::MapShard;
 use crate::shard::shards::data_shard::shard::DataShard;
 use crate::shard::{Shard, ShardConfig, TempShardConfig};
@@ -61,9 +62,12 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         S::new(shard_path, self.temp_opts.to_config(), None)
     }
 
-    pub fn insert_row(&self, data: Vec<u8>) {
+    pub fn insert_row(&self, data: Vec<u8>) -> Result<u64, ShardErrors> {
         let find_usable_shard = {
-            let mut shards = self.temp_shards.read().unwrap();
+            let mut shards = self
+                .temp_shards
+                .read()
+                .map_err(|_| ShardErrors::InvalidLocking)?;
             shards.iter().position(|i| i.has_space())
         };
 
@@ -73,7 +77,10 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
                     // Reconcile last
                     self.reconcile_specific(None);
                 }
-                let mut shards = self.temp_shards.write().unwrap();
+                let mut shards = self
+                    .temp_shards
+                    .write()
+                    .map_err(|_| ShardErrors::InvalidLocking)?;
                 let shard = self.create_shard();
                 shards.push(shard);
                 shards.len() - 1
@@ -82,8 +89,14 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         };
 
         {
-            let mut shards = self.temp_shards.read().unwrap();
-            shards.get(shard_index).unwrap().insert_item(data).unwrap();
+            let mut shards = self
+                .temp_shards
+                .read()
+                .map_err(|_| ShardErrors::InvalidLocking)?;
+            shards
+                .get(shard_index)
+                .ok_or(ShardErrors::UnknownShard)?
+                .insert_item(data)
         }
     }
 

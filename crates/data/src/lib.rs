@@ -1,5 +1,5 @@
 mod data_handler;
-mod errors;
+pub mod errors;
 pub mod index;
 pub mod shard;
 pub mod temp_offset_types;
