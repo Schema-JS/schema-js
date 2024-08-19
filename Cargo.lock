@@ -175,6 +175,7 @@ dependencies = [
  "schemajs_workers",
  "serde",
  "tokio",
+ "tokio-util",
  "uuid",
  "walkdir",
 ]

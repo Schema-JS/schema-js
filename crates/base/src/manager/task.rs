@@ -2,6 +2,7 @@ use crate::manager::task_duration::TaskDuration;
 use schemajs_engine::engine::SchemeJsEngine;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, RwLock};
+use tokio_util::sync::CancellationToken;
 
 pub type TaskSignature = Box<dyn Fn(Arc<SchemeJsEngine>) -> Result<(), ()> + Send + Sync + 'static>;
 
@@ -21,6 +22,7 @@ pub struct Task {
     pub id: String,
     pub func: TaskCallback,
     pub duration: TaskDuration,
+    pub cancellation_token: CancellationToken,
 }
 
 impl Task {
@@ -29,6 +31,7 @@ impl Task {
             id,
             func: TaskCallback { cb: Arc::new(func) },
             duration: task_duration,
+            cancellation_token: CancellationToken::new(),
         }
     }
 }

@@ -272,20 +272,18 @@ mod test {
 
             let mut manager = SchemeJsManager::new(rt.engine.clone());
 
-            manager.add_task(Task {
-                id: "1".to_string(),
-                func: TaskCallback {
-                    cb: Arc::new(Box::new(move |rt| {
-                        for x in rt.databases.iter() {
-                            for s in x.query_manager.shards.iter() {
-                                s.reconcile_all();
-                            }
+            manager.add_task(Task::new(
+                "1".to_string(),
+                Box::new(move |rt| {
+                    for x in rt.databases.iter() {
+                        for s in x.query_manager.shards.iter() {
+                            s.reconcile_all();
                         }
-                        Ok(())
-                    })),
-                },
-                duration: TaskDuration::Defined(Duration::from_millis(250)),
-            });
+                    }
+                    Ok(())
+                }),
+                TaskDuration::Defined(Duration::from_millis(250)),
+            ));
 
             manager.start_tasks();
 
