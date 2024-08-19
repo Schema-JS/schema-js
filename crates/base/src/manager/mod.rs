@@ -8,13 +8,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 pub struct SchemeJsManager {
-    runtime: Arc<RwLock<SchemeJsEngine>>,
+    runtime: Arc<SchemeJsEngine>,
     running: Arc<AtomicBool>,
     tasks: Vec<Task>,
 }
 
 impl SchemeJsManager {
-    pub fn new(runtime: Arc<RwLock<SchemeJsEngine>>) -> Self {
+    pub fn new(runtime: Arc<SchemeJsEngine>) -> Self {
         Self {
             runtime,
             running: Arc::new(AtomicBool::new(true)),
@@ -44,18 +44,13 @@ impl SchemeJsManager {
                             let clone_rt_ref = engine.clone();
                             let cb = task.func.cb.clone();
 
-                            tokio::spawn(async move {
-                                cb(clone_rt_ref)
-                                    .unwrap_or_else(|_| println!("Error executing task"));
-                            });
+                            cb(clone_rt_ref).unwrap_or_else(|_| println!("Error executing task"));
                         }
                     }
                     TaskDuration::Once => {
                         let clone_rt_ref = engine.clone();
                         let cb = task.func.cb.clone();
-                        tokio::spawn(async move {
-                            cb(clone_rt_ref).unwrap_or_else(|_| println!("Error executing task"));
-                        });
+                        cb(clone_rt_ref).unwrap_or_else(|_| println!("Error executing task"));
                     }
                 }
             });

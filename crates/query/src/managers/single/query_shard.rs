@@ -1,6 +1,7 @@
 use crate::errors::QueryError;
 use crate::managers::single::query_shard_entry::QueryShardEntry;
 use crate::primitives::Row;
+use chashmap::CHashMap;
 use schemajs_primitives::table::Table;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -40,7 +41,11 @@ impl<T: Row<T>> QueryShard<T> {
             .serialize()
             .map_err(|e| QueryError::InvalidSerialization)?;
 
-        if let Some(entry) = self.table_shards.read().unwrap().get(&table.name) {
+        let reader = self.table_shards.read().unwrap();
+
+        let maybe_table = { reader.get(&table.name) };
+
+        if let Some(entry) = maybe_table {
             entry
                 .data
                 .temps
@@ -60,6 +65,8 @@ impl<T: Row<T>> QueryShard<T> {
                 .write()
                 .unwrap()
                 .insert_row(serialized_value)?;
+
+            drop(reader);
 
             self.table_shards
                 .write()

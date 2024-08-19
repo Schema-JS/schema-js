@@ -26,7 +26,7 @@ pub struct SchemeJsRuntime {
     pub config_file: PathBuf,
     pub data_path_folder: Option<PathBuf>,
     pub current_folder: PathBuf,
-    pub engine: Arc<RwLock<SchemeJsEngine>>,
+    pub engine: Arc<SchemeJsEngine>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,12 +90,12 @@ impl SchemeJsRuntime {
             .await
             .unwrap();
 
-        let engine = Arc::new(RwLock::new(engine));
+        let engine = Arc::new(engine);
         {
             // Put reference to engine
             let op_state_rc = js_runtime.op_state();
             let mut op_state = op_state_rc.borrow_mut();
-            op_state.put::<Arc<RwLock<SchemeJsEngine>>>(engine.clone());
+            op_state.put::<Arc<SchemeJsEngine>>(engine.clone());
         }
 
         Ok(Self {
@@ -276,9 +276,7 @@ mod test {
                 id: "1".to_string(),
                 func: TaskCallback {
                     cb: Arc::new(Box::new(move |rt| {
-                        let rt_reader = rt.read().unwrap();
-                        println!("Reconciling all");
-                        for x in rt_reader.databases.iter() {
+                        for x in rt.databases.iter() {
                             for s in x.query_manager.shards.iter() {
                                 s.reconcile_all();
                             }
@@ -288,6 +286,8 @@ mod test {
                 },
                 duration: TaskDuration::Defined(Duration::from_millis(250)),
             });
+
+            manager.start_tasks();
 
             let num_inserts = 9529;
             let mut script = String::new();
@@ -305,8 +305,16 @@ mod test {
                 ));
             }
 
+            println!("Inserted");
+
             rt.js_runtime
                 .execute_script(located_script_name!(), script)?;
+
+            // Example: Stop the reconciler and other tasks after some time
+            tokio::time::sleep(Duration::from_secs(20)).await;
+            manager.stop_tasks();
+
+            println!("Executed");
         }
 
         Ok(())

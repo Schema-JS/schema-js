@@ -3,8 +3,7 @@ use schemajs_engine::engine::SchemeJsEngine;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, RwLock};
 
-pub type TaskSignature =
-    Box<dyn Fn(Arc<RwLock<SchemeJsEngine>>) -> Result<(), ()> + Send + Sync + 'static>;
+pub type TaskSignature = Box<dyn Fn(Arc<SchemeJsEngine>) -> Result<(), ()> + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct TaskCallback {
