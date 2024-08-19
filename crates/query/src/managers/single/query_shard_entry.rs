@@ -15,6 +15,7 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -82,11 +83,17 @@ impl<T: Row<T>> QueryShardEntry<T> {
     pub fn init(&mut self) {
         let indexes = self.indexes.clone();
         let table = self.table.clone();
-        self.data.temps.set_on_reconcile(Box::new(move |row, pos| {
-            let row: T = T::from(row.clone());
-            Self::insert_indexes(table.clone(), indexes.clone(), &row, pos);
-            Ok(())
-        }));
+        self.data
+            .temps
+            .write()
+            .unwrap()
+            .set_on_reconcile(Box::new(move |row, pos| {
+                let row: T = T::from(row.clone());
+                Self::insert_indexes(table.clone(), indexes.clone(), &row, pos);
+                Ok(())
+            }));
+
+        // self.start_reconciler();
     }
 
     pub fn insert_indexes(
@@ -123,6 +130,11 @@ impl<T: Row<T>> QueryShardEntry<T> {
     }
 
     pub fn insert(&self, data: T) {
-        self.data.temps.insert_row(data.serialize().unwrap());
+        self.data
+            .temps
+            .write()
+            .unwrap()
+            .insert_row(data.serialize().unwrap())
+            .unwrap();
     }
 }

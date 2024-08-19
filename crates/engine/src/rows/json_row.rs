@@ -7,15 +7,31 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::{Debug, Formatter};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct RowData {
     pub table: String,
     pub value: serde_json::Value,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct RowJson {
-    value: RowData,
+    pub value: RowData,
+}
+
+impl RowJson {
+    fn _serialize(value: &RowData) -> Result<Vec<u8>, RowSerializationError> {
+        serde_json::to_vec(value).map_err(|e| {
+            RowSerializationError::SerializationError("Error serializing row".to_string())
+        })
+    }
+
+    fn _deserialize(data: &[u8]) -> Result<RowJson, RowSerializationError> {
+        let data = serde_json::from_slice::<RowData>(data).map_err(|e| {
+            RowSerializationError::DeserializationError("Error Deserializing row".to_string())
+        })?;
+
+        Ok(Self { value: data })
+    }
 }
 
 impl From<RowData> for RowJson {
@@ -26,17 +42,11 @@ impl From<RowData> for RowJson {
 
 impl schemajs_query::serializer::RowSerializer<RowJson> for RowJson {
     fn serialize(&self) -> Result<Vec<u8>, RowSerializationError> {
-        serde_json::to_vec(&self.value).map_err(|e| {
-            RowSerializationError::SerializationError("Error serializing row".to_string())
-        })
+        Self::_serialize(&self.value)
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<RowJson, RowSerializationError> {
-        let data = serde_json::from_slice::<RowData>(data).map_err(|e| {
-            RowSerializationError::DeserializationError("Error Deserializing row".to_string())
-        })?;
-
-        Ok(Self { value: data })
+        Self::_deserialize(data)
     }
 }
 
@@ -48,7 +58,7 @@ impl Debug for RowJson {
 
 impl From<Vec<u8>> for RowJson {
     fn from(value: Vec<u8>) -> Self {
-        todo!()
+        RowJson::_deserialize(&value).unwrap()
     }
 }
 

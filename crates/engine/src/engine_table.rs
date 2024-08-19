@@ -81,7 +81,12 @@ impl EngineTable {
             .serializer
             .serialize(&item)
             .map_err(InsertionError::SerializationError)?;
-        self.shard_collection.temps.insert_row(val);
+        self.shard_collection
+            .temps
+            .write()
+            .unwrap()
+            .insert_row(val)
+            .unwrap();
         Ok(())
     }
 }

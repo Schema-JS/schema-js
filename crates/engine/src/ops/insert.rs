@@ -4,7 +4,7 @@ use deno_core::{op2, serde_json, OpState};
 use schemajs_query::errors::QueryError;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 #[op2(async)]
@@ -16,10 +16,14 @@ pub async fn op_engine_insert_row(
     #[serde] mut row: serde_json::Value,
 ) -> Result<Uuid, QueryError> {
     let mut mut_state = state.borrow_mut();
-    let state = mut_state.borrow_mut::<Arc<SchemeJsEngine>>().clone();
+    let state = mut_state
+        .borrow_mut::<Arc<RwLock<SchemeJsEngine>>>()
+        .clone();
+
+    let reader = state.read().unwrap();
 
     let query_manager = {
-        let db = state.find_by_name_ref(db_name.clone()).unwrap();
+        let db = reader.find_by_name_ref(db_name.clone()).unwrap();
         db.query_manager.clone()
     };
 

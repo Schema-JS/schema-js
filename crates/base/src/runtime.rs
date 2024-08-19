@@ -7,7 +7,7 @@ use deno_core::{
     ModuleSpecifier, RuntimeOptions,
 };
 use schemajs_config::SchemeJsConfig;
-use schemajs_engine::engine::{ArcSchemeJsEngine, SchemeJsEngine};
+use schemajs_engine::engine::SchemeJsEngine;
 use schemajs_engine::engine_table::EngineTable;
 use schemajs_module_loader::ts_module_loader::TypescriptModuleLoader;
 use schemajs_primitives::database::Database;
@@ -26,7 +26,7 @@ pub struct SchemeJsRuntime {
     pub config_file: PathBuf,
     pub data_path_folder: Option<PathBuf>,
     pub current_folder: PathBuf,
-    pub engine: Arc<SchemeJsEngine>,
+    pub engine: Arc<RwLock<SchemeJsEngine>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,12 +90,12 @@ impl SchemeJsRuntime {
             .await
             .unwrap();
 
-        let engine = Arc::new(engine);
+        let engine = Arc::new(RwLock::new(engine));
         {
             // Put reference to engine
             let op_state_rc = js_runtime.op_state();
             let mut op_state = op_state_rc.borrow_mut();
-            op_state.put::<Arc<SchemeJsEngine>>(engine.clone());
+            op_state.put::<Arc<RwLock<SchemeJsEngine>>>(engine.clone());
         }
 
         Ok(Self {
@@ -183,9 +183,15 @@ impl SchemeJsRuntime {
 
 #[cfg(test)]
 mod test {
+    use crate::manager::task::{Task, TaskCallback};
+    use crate::manager::task_duration::TaskDuration;
+    use crate::manager::SchemeJsManager;
     use crate::runtime::{SchemeJsRuntime, WorkerContextInitOpts};
     use deno_core::{located_script_name, serde_json, v8};
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use uuid::Uuid;
 
     #[tokio::test]
     pub async fn test_runtime_config_as_folder() -> anyhow::Result<()> {
@@ -246,6 +252,62 @@ mod test {
         println!("Elapsed: {:.5?}", elapsed);
 
         std::fs::remove_dir_all(data_path).unwrap();
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn test_runtime_insert_with_manager() -> anyhow::Result<()> {
+        let data_path = std::env::current_dir()
+            .unwrap()
+            .join(PathBuf::from("./test_cases/data"));
+        let now = std::time::Instant::now();
+
+        {
+            let mut rt = SchemeJsRuntime::new(WorkerContextInitOpts {
+                config_path: PathBuf::from("./test_cases/default-db"),
+                data_path: Some(data_path.clone()),
+            })
+            .await?;
+
+            let mut manager = SchemeJsManager::new(rt.engine.clone());
+
+            manager.add_task(Task {
+                id: "1".to_string(),
+                func: TaskCallback {
+                    cb: Arc::new(Box::new(move |rt| {
+                        let rt_reader = rt.read().unwrap();
+                        println!("Reconciling all");
+                        for x in rt_reader.databases.iter() {
+                            for s in x.query_manager.shards.iter() {
+                                s.reconcile_all();
+                            }
+                        }
+                        Ok(())
+                    })),
+                },
+                duration: TaskDuration::Defined(Duration::from_millis(250)),
+            });
+
+            let num_inserts = 9529;
+            let mut script = String::new();
+            println!("To be inserted");
+
+            for i in 0..num_inserts {
+                script.push_str(&format!(
+                    r#"globalThis.SchemeJS.insert("{}", "{}", {});"#,
+                    "public",
+                    "users",
+                    serde_json::json!({
+                        "id": "ABCD"
+                    })
+                    .to_string()
+                ));
+            }
+
+            rt.js_runtime
+                .execute_script(located_script_name!(), script)?;
+        }
 
         Ok(())
     }

@@ -5,14 +5,9 @@ use anyhow::bail;
 use deno_core::{ModuleId, ModuleSpecifier};
 use schemajs_dirs::create_scheme_js_folder;
 use schemajs_primitives::table::Table;
-use std::cell::RefCell;
 use std::future::Future;
 use std::path::PathBuf;
-use std::pin::Pin;
-use std::sync::Arc;
 use walkdir::WalkDir;
-
-pub type ArcSchemeJsEngine = Arc<RefCell<SchemeJsEngine>>;
 
 pub struct SchemeJsEngine {
     pub databases: Vec<EngineDb>,
