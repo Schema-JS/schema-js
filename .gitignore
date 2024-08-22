@@ -2,3 +2,5 @@
 ./target
 /target
 .idea
+./crates/query/test_cases
+/crates/query/test_cases

@@ -56,7 +56,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         }
     }
 
-    fn build_entry_from_vec(&self, el: Vec<u8>) -> Option<IndexEntry> {
+    pub fn build_entry_from_vec(&self, el: Vec<u8>) -> Option<IndexEntry> {
         let index_unit = IndexDataUnit::try_from(el.as_slice()).ok()?;
         let data = index_unit.data;
         let key = IndexDataUnit::try_from(&data[0..(U64_SIZE + self.key_size)]).ok()?;
@@ -90,11 +90,16 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         let entry = self.get_entry(index, global);
         match entry {
             None => return None,
-            Some((key_unit, val_unit, el)) => Some(Self::build_kv(key_unit, val_unit, el)),
+            Some((key_unit, val_unit, el)) => Some(self.build_kv(key_unit, val_unit, el)),
         }
     }
 
-    fn build_kv(key_unit: IndexDataUnit, val_unit: IndexDataUnit, el: Vec<u8>) -> (K, V, Vec<u8>) {
+    pub fn build_kv(
+        &self,
+        key_unit: IndexDataUnit,
+        val_unit: IndexDataUnit,
+        el: Vec<u8>,
+    ) -> (K, V, Vec<u8>) {
         (K::from(key_unit), V::from(val_unit), el)
     }
 
@@ -148,7 +153,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
             let kv = {
                 let entry = self.get_entry_from_shard(shard, mid as usize).unwrap();
                 let (key_unit, val_unit, el) = self.build_entry_from_vec(entry).unwrap();
-                Self::build_kv(key_unit, val_unit, el)
+                self.build_kv(key_unit, val_unit, el)
             };
 
             let (key, value, _) = kv;
@@ -295,6 +300,99 @@ mod test {
             let entry = index.get_kv(8, true);
             assert!(entry.is_none())
         }
+
+        std::fs::remove_dir_all(index_folder).unwrap();
+    }
+
+    #[tokio::test]
+    pub async fn test_binary_order() {
+        let temp_dir = tempdir().unwrap();
+        let index_folder = temp_dir.path().join("indx");
+
+        std::fs::create_dir(index_folder.clone()).unwrap();
+
+        let mut index = IndexShard::new(
+            index_folder.clone(),
+            "indx".to_string(),
+            32,
+            1024,
+            None,
+            Some(true),
+        );
+
+        let key_size = 32;
+        let value_size = 1024;
+
+        index.insert(
+            StringIndexKey("z".repeat(key_size)),
+            RawIndexValue(vec![0u8; 1024]),
+        );
+        index.insert(StringIndexKey("h".repeat(key_size)), vec![0u8; 1024].into());
+        index.insert(StringIndexKey("i".repeat(key_size)), vec![0u8; 1024].into());
+        index.insert(StringIndexKey("j".repeat(key_size)), vec![1u8; 1024].into());
+        index.insert(StringIndexKey("b".repeat(key_size)), vec![0u8; 1024].into());
+        index.insert(StringIndexKey("d".repeat(key_size)), vec![0u8; 1024].into());
+        index.insert(StringIndexKey("e".repeat(key_size)), vec![0u8; 1024].into());
+
+        assert_eq!(index.get_kv(0, true).unwrap().0 .0, "b".repeat(key_size));
+        assert_eq!(index.get_kv(1, true).unwrap().0 .0, "d".repeat(key_size));
+        assert_eq!(index.get_kv(2, true).unwrap().0 .0, "e".repeat(key_size));
+        assert_eq!(index.get_kv(3, true).unwrap().0 .0, "h".repeat(key_size));
+        assert_eq!(index.get_kv(4, true).unwrap().0 .0, "i".repeat(key_size));
+        assert_eq!(index.get_kv(5, true).unwrap().0 .0, "j".repeat(key_size));
+        assert_eq!(index.get_kv(6, true).unwrap().0 .0, "z".repeat(key_size));
+
+        std::fs::remove_dir_all(index_folder).unwrap();
+    }
+
+    #[tokio::test]
+    pub async fn test_binary_order_with_fixed_size_keys() {
+        let temp_dir = tempdir().unwrap();
+        let index_folder = temp_dir.path().join("indx");
+
+        std::fs::create_dir(index_folder.clone()).unwrap();
+
+        let mut index = IndexShard::new(
+            index_folder.clone(),
+            "indx".to_string(),
+            32,
+            1024,
+            None,
+            Some(true),
+        );
+
+        let pad_key = |s: &str| -> String {
+            let mut key = s.to_string();
+            key.truncate(32); // Ensure the key is no longer than 32 characters
+            while key.len() < 32 {
+                key.push(' '); // Pad with spaces to make it 32 characters long
+            }
+            key
+        };
+
+        // Insert keys with custom format, padded to 32 characters
+        index.insert(
+            StringIndexKey(pad_key("string(a:2)")),
+            RawIndexValue(vec![0u8; 1024]),
+        );
+        index.insert(
+            StringIndexKey(pad_key("string(a:0)")),
+            vec![1u8; 1024].into(),
+        );
+        index.insert(
+            StringIndexKey(pad_key("string(a:1)")),
+            vec![2u8; 1024].into(),
+        );
+
+        // Assert the correct order
+        assert_eq!(index.get_kv(0, true).unwrap().0 .0, pad_key("string(a:0)"));
+        assert_eq!(index.get_kv(1, true).unwrap().0 .0, pad_key("string(a:1)"));
+        assert_eq!(index.get_kv(2, true).unwrap().0 .0, pad_key("string(a:2)"));
+
+        // Check that the values correspond correctly
+        assert_eq!(index.get_kv(0, true).unwrap().1 .0, vec![1u8; 1024]);
+        assert_eq!(index.get_kv(1, true).unwrap().1 .0, vec![2u8; 1024]);
+        assert_eq!(index.get_kv(2, true).unwrap().1 .0, vec![0u8; 1024]);
 
         std::fs::remove_dir_all(index_folder).unwrap();
     }

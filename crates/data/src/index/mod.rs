@@ -1,12 +1,12 @@
 pub mod composite_key;
-mod data;
+pub mod data;
 mod errors;
 pub mod implementations;
-mod index_type;
+pub mod index_type;
 pub mod keys;
-mod types;
+pub mod types;
 mod utils;
-mod vals;
+pub mod vals;
 
 use std::fmt::Debug;
 

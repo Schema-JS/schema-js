@@ -21,3 +21,4 @@ chashmap.workspace = true
 schemajs_dirs = { version = "0.1.0", path = "../dirs" }
 uuid.workspace = true
 tokio.workspace = true
+tempfile.workspace = true

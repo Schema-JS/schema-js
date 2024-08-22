@@ -4,96 +4,102 @@ use schemajs_data::index::composite_key::CompositeKey;
 use schemajs_data::index::implementations::hash::hash_index::HashIndex;
 use schemajs_data::index::keys::index_key_sha256::IndexKeySha256;
 use schemajs_data::index::Index;
-use schemajs_data::shard::shard_collection::ShardCollection;
+use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
 use schemajs_data::shard::shards::data_shard::shard::DataShard;
-use schemajs_data::temp_offset_types::TempOffsetTypes;
+use schemajs_data::shard::temp_collection::TempCollection;
 use schemajs_dirs::create_schema_js_table;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::table::Table;
-use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
-use uuid::Uuid;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug)]
-pub struct QueryShardEntry<T: Row<T>> {
-    pub data: ShardCollection<DataShard, DataShardConfig, TempDataShardConfig>,
+pub struct TableShard<T: Row<T>> {
     pub table: Table,
+    pub data: Arc<RwLock<MapShard<DataShard, DataShardConfig>>>,
+    pub temps: TempCollection<DataShard, DataShardConfig, TempDataShardConfig>,
     pub indexes: Arc<CHashMap<String, HashIndex>>,
-    pub path: PathBuf,
-    pub uuid: Uuid,
-    // Markers
-    _key_marker: PhantomData<T>,
+    _marker: PhantomData<T>,
 }
 
-impl<T: Row<T>> QueryShardEntry<T> {
-    pub fn new(scheme_name: String, table_name: String, table: Table) -> Self {
-        let uuid = Uuid::new_v4();
-        let table_path = create_schema_js_table(
-            None,
-            scheme_name.as_str(),
-            format!("{}_{}", table_name, uuid.to_string()).as_str(),
-        );
+impl<T: Row<T>> TableShard<T> {
+    pub fn new(
+        table: Table,
+        base_path: Option<PathBuf>,
+        scheme: &str,
+        temp_config: TempDataShardConfig,
+    ) -> Self {
+        let table_path = create_schema_js_table(base_path, scheme, table.name.as_str());
 
-        let mut shard_col = ShardCollection::new(
+        let map_shard = MapShard::new(
             table_path.clone(),
             "data_",
             DataShardConfig {
                 max_offsets: Some(2_500_000),
             },
-            TempDataShardConfig {
-                max_offsets: TempOffsetTypes::Custom(Some(1000)),
-            },
+        );
+
+        let refs = Arc::new(RwLock::new(map_shard));
+
+        let temp_collection = TempCollection::new(
+            refs.clone(),
+            5,
+            table_path.join("temps"),
+            "temp_",
+            temp_config,
         );
 
         let mut indexes = CHashMap::new();
 
         for index in &table.indexes {
             let path = table_path.join("indx");
+
             if !path.exists() {
                 std::fs::create_dir(path.clone()).unwrap();
             }
+
             indexes.insert(
                 index.name.clone(),
-                HashIndex::new_from_path(
-                    path,
-                    Some(format!("{}-{}", uuid.to_string(), index.name)),
-                    Some(10_000_000),
-                ),
+                HashIndex::new_from_path(path, Some(format!("{}", index.name)), Some(10_000_000)),
             );
         }
 
-        let mut ret_struct = Self {
-            data: shard_col,
+        let mut tbl_shard = Self {
             indexes: Arc::new(indexes),
-            path: table_path,
-            uuid,
-            table: table.clone(),
-            _key_marker: PhantomData,
+            data: refs.clone(),
+            table,
+            temps: temp_collection,
+            _marker: PhantomData,
         };
 
-        ret_struct.init();
+        tbl_shard.init();
 
-        ret_struct
+        tbl_shard
     }
 
     pub fn init(&mut self) {
         let indexes = self.indexes.clone();
         let table = self.table.clone();
-        self.data
-            .temps
-            .write()
-            .unwrap()
-            .set_on_reconcile(Box::new(move |row, pos| {
-                let row: T = T::from(row.clone());
-                Self::insert_indexes(table.clone(), indexes.clone(), &row, pos);
-                Ok(())
-            }));
 
-        // self.start_reconciler();
+        for temp_shard in self.temps.temps.iter() {
+            let indexes = indexes.clone();
+            let table = table.clone();
+
+            temp_shard
+                .write()
+                .unwrap()
+                .set_on_reconcile(Box::new(move |row, pos| {
+                    let row: T = T::from(row.clone());
+                    Self::insert_indexes(table.clone(), indexes.clone(), &row, pos);
+                    Ok(())
+                }))
+        }
+    }
+
+    pub fn find_index(&self, filters: CompositeKey) {
+        let table_index = &self.table.indexes;
     }
 
     pub fn insert_indexes(
@@ -127,14 +133,5 @@ impl<T: Row<T>> QueryShardEntry<T> {
                 index.insert(hashed_key, pos_index as u64)
             }
         }
-    }
-
-    pub fn insert(&self, data: T) {
-        self.data
-            .temps
-            .write()
-            .unwrap()
-            .insert_row(data.serialize().unwrap())
-            .unwrap();
     }
 }

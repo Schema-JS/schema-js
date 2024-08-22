@@ -1,7 +1,7 @@
 pub mod collection;
 pub mod column;
 pub mod database;
-mod index;
+pub mod index;
 pub mod table;
 
 deno_core::extension!(

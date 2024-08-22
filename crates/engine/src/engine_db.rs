@@ -24,8 +24,6 @@ impl EngineDb {
     }
 
     pub fn add_table(&self, table: Table) {
-        self.query_manager
-            .tables
-            .insert(table.name.to_string(), table);
+        self.query_manager.register_table(table);
     }
 }

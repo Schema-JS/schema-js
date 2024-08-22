@@ -2368,6 +2368,7 @@ dependencies = [
  "schemajs_primitives",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
  "uuid",

@@ -8,10 +8,11 @@ use crate::index::Index;
 use std::fmt::Debug;
 use std::io::{Seek, Write};
 use std::path::Path;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct HashIndex {
-    index: IndexShard<IndexKeySha256, RawIndexValue>,
+    pub index: Arc<IndexShard<IndexKeySha256, RawIndexValue>>,
 }
 
 impl HashIndex {
@@ -29,7 +30,9 @@ impl HashIndex {
             Some(true),
         );
 
-        Self { index: index_shard }
+        Self {
+            index: Arc::new(index_shard),
+        }
     }
 
     fn calculate_item_offset(&self, index: usize) -> usize {
