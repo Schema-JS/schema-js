@@ -1,5 +1,5 @@
-use crate::index::data::index_data_unit::IndexDataUnit;
-use crate::index::types::IndexKey;
+use crate::data::index_data_unit::IndexDataUnit;
+use crate::types::IndexKey;
 use std::cmp::Ordering;
 
 #[derive(Debug)]

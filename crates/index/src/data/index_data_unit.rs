@@ -1,6 +1,6 @@
-use crate::data_handler::DataHandler;
-use crate::index::errors::IndexError;
-use crate::U64_SIZE;
+use crate::errors::IndexError;
+use schemajs_data::data_handler::DataHandler;
+use schemajs_data::U64_SIZE;
 
 pub struct IndexDataUnit {
     pub item_size: u64,

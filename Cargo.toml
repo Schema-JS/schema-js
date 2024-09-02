@@ -11,6 +11,7 @@ members = [
     "./crates/data",
     "./crates/dirs",
     "./crates/query",
+    "./crates/index",
 ]
 resolver = "2"
 

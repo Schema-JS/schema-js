@@ -8,7 +8,6 @@ use deno_core::{
 };
 use schemajs_config::SchemeJsConfig;
 use schemajs_engine::engine::SchemeJsEngine;
-use schemajs_engine::engine_table::EngineTable;
 use schemajs_module_loader::ts_module_loader::TypescriptModuleLoader;
 use schemajs_primitives::database::Database;
 use schemajs_primitives::table::Table;
@@ -276,8 +275,10 @@ mod test {
                 "1".to_string(),
                 Box::new(move |rt| {
                     for x in rt.databases.iter() {
-                        for s in x.query_manager.shards.iter() {
-                            s.reconcile_all();
+                        let query_manager = &x.query_manager;
+                        for table in query_manager.table_names.read().unwrap().iter() {
+                            let table = query_manager.tables.get(table).unwrap();
+                            table.temps.reconcile_all();
                         }
                     }
                     Ok(())

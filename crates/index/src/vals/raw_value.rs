@@ -1,5 +1,5 @@
-use crate::index::data::index_data_unit::IndexDataUnit;
-use crate::index::types::IndexValue;
+use crate::data::index_data_unit::IndexDataUnit;
+use crate::types::IndexValue;
 
 #[derive(Debug)]
 pub struct RawIndexValue(pub Vec<u8>);

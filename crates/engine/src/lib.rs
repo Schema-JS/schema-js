@@ -2,14 +2,10 @@ use crate::ops::insert::op_engine_insert_row;
 
 pub mod engine;
 pub mod engine_db;
-pub mod engine_table;
 mod ops;
 mod query_error;
-pub mod validation_error;
-
-mod rows;
-pub mod serializer;
 pub mod utils;
+pub mod validation_error;
 
 deno_core::extension!(
     sjs_engine,

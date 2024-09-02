@@ -1,6 +1,6 @@
-use crate::serializer::RowSerializationError;
 use crate::validation_error::ValidationError;
 use enum_as_inner::EnumAsInner;
+use schemajs_query::serializer::RowSerializationError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 

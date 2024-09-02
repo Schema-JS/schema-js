@@ -2,19 +2,18 @@ mod table_shard;
 
 use crate::errors::QueryError;
 use crate::managers::single::table_shard::TableShard;
-use crate::ops::query_ops::QueryOps;
 use crate::primitives::Row;
-use crate::utils::index_utils::{matching_indexes, matching_indexes_for_query};
-use chashmap::{CHashMap, ReadGuard};
+use chashmap::CHashMap;
 use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_primitives::table::Table;
 use std::hash::Hash;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct SingleQueryManager<T: Row<T>> {
+    pub table_names: RwLock<Vec<String>>,
     pub tables: Arc<CHashMap<String, TableShard<T>>>,
     pub num_shards: usize,
     pub scheme: String,
@@ -27,6 +26,7 @@ impl<T: Row<T>> SingleQueryManager<T> {
         let uuid = Uuid::new_v4();
 
         SingleQueryManager {
+            table_names: RwLock::new(vec![]),
             num_shards,
             tables: Arc::new(CHashMap::default()),
             scheme,
@@ -34,23 +34,8 @@ impl<T: Row<T>> SingleQueryManager<T> {
         }
     }
 
-    pub fn search(&self, table: String, query: QueryOps) {
-        let table = self.tables.get(&table);
-        match table {
-            None => {}
-            Some(tbl) => {
-                let potential_indx = matching_indexes_for_query(&tbl.table.indexes, &query);
-                if !potential_indx.is_empty() {
-                    let index = potential_indx
-                        .iter()
-                        .min_by_key(|i| i.members.len())
-                        .unwrap();
-                }
-            }
-        }
-    }
-
     pub fn register_table(&self, table: Table) {
+        self.table_names.write().unwrap().push(table.name.clone());
         self.tables.insert(
             table.name.clone(),
             TableShard::<T>::new(

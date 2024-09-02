@@ -46,6 +46,12 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         &self.temps[index]
     }
 
+    pub fn reconcile_all(&self) {
+        for temp in self.temps.iter() {
+            temp.write().unwrap().reconcile_all()
+        }
+    }
+
     pub fn insert(&self, data: Vec<u8>) -> Result<u64, ShardErrors> {
         let mut next_shard = self
             .get_next_shard()

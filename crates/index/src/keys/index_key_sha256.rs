@@ -1,7 +1,7 @@
-use crate::index::composite_key::CompositeKey;
-use crate::index::data::index_data_unit::IndexDataUnit;
-use crate::index::types::IndexKey;
-use crate::utils::hash::{sha256_to_string, to_sha256};
+use crate::composite_key::CompositeKey;
+use crate::data::index_data_unit::IndexDataUnit;
+use crate::types::IndexKey;
+use schemajs_data::utils::hash::{sha256_to_string, to_sha256};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 

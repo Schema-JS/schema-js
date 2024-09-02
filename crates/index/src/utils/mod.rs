@@ -1,4 +1,4 @@
-use crate::index::data::index_data_unit::IndexDataUnit;
+use crate::data::index_data_unit::IndexDataUnit;
 
 pub fn get_entry_size(key_size: usize, value_size: usize) -> usize {
     let entry_data_size = {

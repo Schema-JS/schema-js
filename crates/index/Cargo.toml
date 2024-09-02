@@ -1,5 +1,5 @@
 [package]
-name = "schemajs_query"
+name = "schemajs_index"
 version = "0.1.0"
 authors = ["Andres Pirela <andreespirela@outlook.com>"]
 edition = "2021"
@@ -11,15 +11,9 @@ license = "MIT"
 serde.workspace = true
 anyhow.workspace = true
 enum-as-inner.workspace = true
-schemajs_primitives = { version = "0.1.0", path = "../primitives" }
 schemajs_data = { version = "0.1.0", path = "../data" }
-thiserror.workspace = true
-serde_json.workspace = true
-borsh.workspace = true
-ahash.workspace = true
-chashmap.workspace = true
-schemajs_dirs = { version = "0.1.0", path = "../dirs" }
-uuid.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 tempfile.workspace = true
-schemajs_index = { version = "0.1.0", path = "../index" }
+uuid.workspace = true
+rand.workspace = true

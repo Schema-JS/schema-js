@@ -1,5 +1,5 @@
 use crate::ops::query_ops::{QueryOps, QueryVal};
-use schemajs_data::index::composite_key::CompositeKey;
+use schemajs_index::composite_key::CompositeKey;
 use schemajs_primitives::index::Index;
 
 // Function to check if an Index is present in the CompositeKey
@@ -67,7 +67,8 @@ fn extract_query_vals(query_ops: &QueryOps) -> Vec<QueryVal> {
 mod tests {
     use crate::ops::query_ops::{FilterType, QueryOps, QueryVal};
     use crate::utils::index_utils::{matches_index, matching_indexes, matching_indexes_for_query};
-    use schemajs_data::index::composite_key::CompositeKey;
+    use schemajs_index::composite_key::CompositeKey;
+    use schemajs_index::index_type::IndexType;
     use schemajs_primitives::column::types::DataValue;
     use schemajs_primitives::index::Index;
 
@@ -76,6 +77,7 @@ mod tests {
         let index = Index {
             name: "indx_first_name_and_email".to_string(),
             members: vec!["first_name".to_string(), "email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let composite_key = CompositeKey(vec![
@@ -91,6 +93,7 @@ mod tests {
         let index = Index {
             name: "indx_first_name_and_email".to_string(),
             members: vec!["first_name".to_string(), "email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let composite_key = CompositeKey(vec![("first_name".to_string(), "Juan".to_string())]);
@@ -103,6 +106,7 @@ mod tests {
         let index = Index {
             name: "indx_email".to_string(),
             members: vec!["email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let composite_key = CompositeKey(vec![
@@ -118,11 +122,13 @@ mod tests {
         let index1 = Index {
             name: "indx_first_name_and_email".to_string(),
             members: vec!["first_name".to_string(), "email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let index2 = Index {
             name: "indx_email".to_string(),
             members: vec!["email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let indexes = vec![index1.clone(), index2.clone()];
@@ -142,11 +148,13 @@ mod tests {
         let index1 = Index {
             name: "indx_first_name_and_email".to_string(),
             members: vec!["first_name".to_string(), "email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let index2 = Index {
             name: "indx_email".to_string(),
             members: vec!["email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let indexes = vec![index1, index2];
@@ -163,11 +171,13 @@ mod tests {
         let index1 = Index {
             name: "indx_first_name_and_email".to_string(),
             members: vec!["first_name".to_string(), "email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let index2 = Index {
             name: "indx_email".to_string(),
             members: vec!["email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let indexes = vec![index1.clone(), index2.clone()];
@@ -184,11 +194,13 @@ mod tests {
         let index1 = Index {
             name: "indx_first_name_and_email".to_string(),
             members: vec!["first_name".to_string(), "email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let index2 = Index {
             name: "indx_email".to_string(),
             members: vec!["email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let indexes = vec![index1.clone(), index2.clone()];
@@ -218,11 +230,13 @@ mod tests {
         let index1 = Index {
             name: "indx_first_name".to_string(),
             members: vec!["first_name".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let index2 = Index {
             name: "indx_email".to_string(),
             members: vec!["email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let indexes = vec![index1.clone(), index2.clone()];
@@ -251,11 +265,13 @@ mod tests {
         let index1 = Index {
             name: "indx_first_name_and_email".to_string(),
             members: vec!["first_name".to_string(), "email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let index2 = Index {
             name: "indx_email".to_string(),
             members: vec!["email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let indexes = vec![index1.clone(), index2.clone()];
@@ -278,16 +294,19 @@ mod tests {
         let index1 = Index {
             name: "indx_first_name".to_string(),
             members: vec!["first_name".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let index2 = Index {
             name: "indx_email".to_string(),
             members: vec!["email".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let index3 = Index {
             name: "indx_last_name".to_string(),
             members: vec!["last_name".to_string()],
+            index_type: IndexType::Hash,
         };
 
         let indexes = vec![index1.clone(), index2.clone(), index3.clone()];

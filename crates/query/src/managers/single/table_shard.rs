@@ -1,14 +1,14 @@
 use crate::primitives::Row;
 use chashmap::CHashMap;
-use schemajs_data::index::composite_key::CompositeKey;
-use schemajs_data::index::implementations::hash::hash_index::HashIndex;
-use schemajs_data::index::keys::index_key_sha256::IndexKeySha256;
-use schemajs_data::index::Index;
 use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
 use schemajs_data::shard::shards::data_shard::shard::DataShard;
 use schemajs_data::shard::temp_collection::TempCollection;
 use schemajs_dirs::create_schema_js_table;
+use schemajs_index::composite_key::CompositeKey;
+use schemajs_index::implementations::hash::hash_index::HashIndex;
+use schemajs_index::index_type::{IndexType, IndexTypeValue};
+use schemajs_index::types::{Index, IndexKey};
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::table::Table;
 use std::marker::PhantomData;
@@ -20,7 +20,7 @@ pub struct TableShard<T: Row<T>> {
     pub table: Table,
     pub data: Arc<RwLock<MapShard<DataShard, DataShardConfig>>>,
     pub temps: TempCollection<DataShard, DataShardConfig, TempDataShardConfig>,
-    pub indexes: Arc<CHashMap<String, HashIndex>>,
+    pub indexes: Arc<CHashMap<String, IndexTypeValue>>,
     _marker: PhantomData<T>,
 }
 
@@ -60,10 +60,15 @@ impl<T: Row<T>> TableShard<T> {
                 std::fs::create_dir(path.clone()).unwrap();
             }
 
-            indexes.insert(
-                index.name.clone(),
-                HashIndex::new_from_path(path, Some(format!("{}", index.name)), Some(10_000_000)),
-            );
+            let index_obj = match index.index_type {
+                IndexType::Hash => IndexTypeValue::Hash(HashIndex::new_from_path(
+                    path,
+                    Some(format!("{}", index.name)),
+                    Some(10_000_000),
+                )),
+            };
+
+            indexes.insert(index.name.clone(), index_obj);
         }
 
         let mut tbl_shard = Self {
@@ -98,13 +103,9 @@ impl<T: Row<T>> TableShard<T> {
         }
     }
 
-    pub fn find_index(&self, filters: CompositeKey) {
-        let table_index = &self.table.indexes;
-    }
-
     pub fn insert_indexes(
         table: Table,
-        indexes: Arc<CHashMap<String, HashIndex>>,
+        indexes: Arc<CHashMap<String, IndexTypeValue>>,
         data: &T,
         pos_index: usize,
     ) {
@@ -129,8 +130,10 @@ impl<T: Row<T>> TableShard<T> {
                 let index = indexes.get_mut(&(index.name.clone())).unwrap();
 
                 let composite_key = CompositeKey(composite_key_vals);
-                let hashed_key = IndexKeySha256::from(composite_key);
-                index.insert(hashed_key, pos_index as u64)
+                let indx = index.as_index();
+                let key = indx.to_key(composite_key);
+
+                indx.insert(key, pos_index as u64)
             }
         }
     }

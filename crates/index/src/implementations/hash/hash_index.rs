@@ -1,10 +1,12 @@
-use crate::index::data::index_shard::IndexShard;
-use crate::index::implementations::hash::hash_index_header::{
+use crate::composite_key::CompositeKey;
+use crate::data::index_shard::IndexShard;
+use crate::implementations::hash::hash_index_header::{
     HASH_INDEX_KEY_SIZE, HASH_INDEX_TOTAL_ENTRY_SIZE, HASH_INDEX_VALUE_SIZE,
 };
-use crate::index::keys::index_key_sha256::IndexKeySha256;
-use crate::index::vals::raw_value::RawIndexValue;
-use crate::index::Index;
+use crate::index_keys::IndexKeyType;
+use crate::keys::index_key_sha256::IndexKeySha256;
+use crate::types::Index;
+use crate::vals::raw_value::RawIndexValue;
 use std::fmt::Debug;
 use std::io::{Seek, Write};
 use std::path::Path;
@@ -47,31 +49,32 @@ impl HashIndex {
     }
 }
 
-impl Index<IndexKeySha256> for HashIndex {
-    fn insert(&self, key: IndexKeySha256, row_position: u64) {
+impl Index for HashIndex {
+    fn to_key(&self, key: CompositeKey) -> IndexKeyType {
+        IndexKeyType::Sha256(IndexKeySha256::from(key))
+    }
+
+    fn insert(&self, key: IndexKeyType, row_position: u64) {
+        let key = key.into_sha256().unwrap();
         self.index
             .insert(key, row_position.to_le_bytes().to_vec().into());
     }
 
-    fn get(&self, key: &IndexKeySha256) -> Option<u64> {
+    fn get(&self, key: &IndexKeyType) -> Option<u64> {
         todo!()
     }
 
-    fn remove(&mut self, key: &IndexKeySha256) -> Option<u64> {
-        todo!()
-    }
-
-    fn search(&self, key: &IndexKeySha256) -> Option<u64> {
+    fn remove(&mut self, key: &IndexKeyType) -> Option<u64> {
         todo!()
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::index::composite_key::CompositeKey;
-    use crate::index::implementations::hash::hash_index::HashIndex;
-    use crate::index::keys::index_key_sha256::IndexKeySha256;
-    use crate::index::Index;
+    use crate::composite_key::CompositeKey;
+    use crate::implementations::hash::hash_index::HashIndex;
+    use crate::keys::index_key_sha256::IndexKeySha256;
+    use crate::types::Index;
     use tempfile::tempdir;
     use uuid::Uuid;
 

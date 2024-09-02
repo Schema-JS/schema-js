@@ -1,12 +1,12 @@
-use crate::errors::ShardErrors;
-use crate::index::data::index_data_unit::IndexDataUnit;
-use crate::index::types::{IndexKey, IndexValue};
-use crate::index::utils::get_entry_size;
-use crate::shard::map_shard::MapShard;
-use crate::shard::shards::kv::config::KvShardConfig;
-use crate::shard::shards::kv::shard::KvShard;
-use crate::shard::Shard;
-use crate::U64_SIZE;
+use crate::data::index_data_unit::IndexDataUnit;
+use crate::types::{IndexKey, IndexValue};
+use crate::utils::get_entry_size;
+use schemajs_data::errors::ShardErrors;
+use schemajs_data::shard::map_shard::MapShard;
+use schemajs_data::shard::shards::kv::config::KvShardConfig;
+use schemajs_data::shard::shards::kv::shard::KvShard;
+use schemajs_data::shard::Shard;
+use schemajs_data::U64_SIZE;
 use std::cmp::Ordering;
 use std::io::{Seek, Write};
 use std::marker::PhantomData;
@@ -233,11 +233,10 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
 
 #[cfg(test)]
 mod test {
-    use crate::index::data::index_shard::IndexShard;
-    use crate::index::keys::string_index::StringIndexKey;
-    use crate::index::utils::get_entry_size;
-    use crate::index::vals::raw_value::RawIndexValue;
-    use crate::U64_SIZE;
+    use crate::data::index_shard::IndexShard;
+    use crate::keys::string_index::StringIndexKey;
+    use crate::utils::get_entry_size;
+    use crate::vals::raw_value::RawIndexValue;
     use tempfile::tempdir;
     use uuid::Uuid;
 
@@ -245,12 +244,6 @@ mod test {
     pub async fn test_data_positions() {
         let entry_size = get_entry_size(32, 1024);
         assert_eq!(entry_size, 1080);
-        //
-        // let offset_by_index = get_element_offset(1, 32, 1024);
-        // assert_eq!(
-        //     offset_by_index,
-        //     IndexShardHeader::header_size() + (entry_size * 1)
-        // );
     }
 
     #[tokio::test]

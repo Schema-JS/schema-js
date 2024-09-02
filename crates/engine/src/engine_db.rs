@@ -1,7 +1,7 @@
-use crate::rows::json_row::RowJson;
 use schemajs_dirs::create_scheme_js_db;
 use schemajs_primitives::table::Table;
 use schemajs_query::managers::single::SingleQueryManager;
+use schemajs_query::row_json::RowJson;
 use std::path::PathBuf;
 use std::sync::Arc;
 

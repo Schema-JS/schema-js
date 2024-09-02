@@ -1,4 +1,4 @@
-use crate::primitives::{Row, ShardKey};
+use crate::primitives::Row;
 use crate::serializer;
 use crate::serializer::RowSerializationError;
 use schemajs_primitives::column::types::DataValue;
@@ -60,8 +60,6 @@ impl From<Vec<u8>> for RowJson {
         RowJson::_deserialize(&value).unwrap()
     }
 }
-
-impl ShardKey for RowJson {}
 
 impl Row<RowJson> for RowJson {
     fn get_value(&self, column: &Column) -> Option<DataValue> {

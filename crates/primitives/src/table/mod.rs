@@ -4,6 +4,7 @@ use crate::column::types::DataTypes;
 use crate::column::Column;
 use crate::index::Index;
 use crate::table::metadata::TableMetadata;
+use schemajs_index::index_type::IndexType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -44,6 +45,7 @@ impl Table {
         Index {
             name: "uidindx".to_string(),
             members: vec!["_uid".to_string()],
+            index_type: IndexType::Hash,
         }
     }
 
