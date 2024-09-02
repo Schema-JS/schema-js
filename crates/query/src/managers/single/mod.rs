@@ -2,7 +2,7 @@ mod table_shard;
 
 use crate::errors::QueryError;
 use crate::managers::single::table_shard::TableShard;
-use crate::primitives::Row;
+use crate::row::Row;
 use chashmap::CHashMap;
 use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
 use schemajs_data::temp_offset_types::TempOffsetTypes;

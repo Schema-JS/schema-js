@@ -1,4 +1,4 @@
-use crate::primitives::Row;
+use crate::row::Row;
 use crate::serializer;
 use crate::serializer::RowSerializationError;
 use schemajs_primitives::column::types::DataValue;

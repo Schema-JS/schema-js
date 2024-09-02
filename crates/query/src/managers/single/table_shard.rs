@@ -1,4 +1,4 @@
-use crate::primitives::Row;
+use crate::row::Row;
 use chashmap::CHashMap;
 use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
