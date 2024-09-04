@@ -7,8 +7,7 @@ use deno_core::{
     ModuleSpecifier, RuntimeOptions,
 };
 use schemajs_config::SchemeJsConfig;
-use schemajs_engine::engine::{ArcSchemeJsEngine, SchemeJsEngine};
-use schemajs_engine::engine_table::EngineTable;
+use schemajs_engine::engine::SchemeJsEngine;
 use schemajs_module_loader::ts_module_loader::TypescriptModuleLoader;
 use schemajs_primitives::database::Database;
 use schemajs_primitives::table::Table;
@@ -183,9 +182,15 @@ impl SchemeJsRuntime {
 
 #[cfg(test)]
 mod test {
+    use crate::manager::task::{Task, TaskCallback};
+    use crate::manager::task_duration::TaskDuration;
+    use crate::manager::SchemeJsManager;
     use crate::runtime::{SchemeJsRuntime, WorkerContextInitOpts};
     use deno_core::{located_script_name, serde_json, v8};
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use uuid::Uuid;
 
     #[tokio::test]
     pub async fn test_runtime_config_as_folder() -> anyhow::Result<()> {
@@ -246,6 +251,70 @@ mod test {
         println!("Elapsed: {:.5?}", elapsed);
 
         std::fs::remove_dir_all(data_path).unwrap();
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn test_runtime_insert_with_manager() -> anyhow::Result<()> {
+        let data_path = std::env::current_dir()
+            .unwrap()
+            .join(PathBuf::from("./test_cases/data"));
+        let now = std::time::Instant::now();
+
+        {
+            let mut rt = SchemeJsRuntime::new(WorkerContextInitOpts {
+                config_path: PathBuf::from("./test_cases/default-db"),
+                data_path: Some(data_path.clone()),
+            })
+            .await?;
+
+            let mut manager = SchemeJsManager::new(rt.engine.clone());
+
+            manager.add_task(Task::new(
+                "1".to_string(),
+                Box::new(move |rt| {
+                    for x in rt.databases.iter() {
+                        let query_manager = &x.query_manager;
+                        for table in query_manager.table_names.read().unwrap().iter() {
+                            let table = query_manager.tables.get(table).unwrap();
+                            table.temps.reconcile_all();
+                        }
+                    }
+                    Ok(())
+                }),
+                TaskDuration::Defined(Duration::from_millis(250)),
+            ));
+
+            manager.start_tasks();
+
+            let num_inserts = 9529;
+            let mut script = String::new();
+            println!("To be inserted");
+
+            for i in 0..num_inserts {
+                script.push_str(&format!(
+                    r#"globalThis.SchemeJS.insert("{}", "{}", {});"#,
+                    "public",
+                    "users",
+                    serde_json::json!({
+                        "id": "ABCD"
+                    })
+                    .to_string()
+                ));
+            }
+
+            println!("Inserted");
+
+            rt.js_runtime
+                .execute_script(located_script_name!(), script)?;
+
+            // Example: Stop the reconciler and other tasks after some time
+            tokio::time::sleep(Duration::from_secs(20)).await;
+            manager.stop_tasks();
+
+            println!("Executed");
+        }
 
         Ok(())
     }

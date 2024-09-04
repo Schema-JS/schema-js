@@ -1,18 +1,12 @@
 use crate::engine_db::EngineDb;
-use crate::engine_table::EngineTable;
 use crate::utils::fs::is_js_or_ts;
 use anyhow::bail;
 use deno_core::{ModuleId, ModuleSpecifier};
 use schemajs_dirs::create_scheme_js_folder;
 use schemajs_primitives::table::Table;
-use std::cell::RefCell;
 use std::future::Future;
 use std::path::PathBuf;
-use std::pin::Pin;
-use std::sync::Arc;
 use walkdir::WalkDir;
-
-pub type ArcSchemeJsEngine = Arc<RefCell<SchemeJsEngine>>;
 
 pub struct SchemeJsEngine {
     pub databases: Vec<EngineDb>,
@@ -86,11 +80,10 @@ impl SchemeJsEngine {
 #[cfg(test)]
 mod test {
     use crate::engine::SchemeJsEngine;
-    use crate::engine_table::EngineTable;
     use schemajs_data::shard::Shard;
-    use schemajs_primitives::r#mod::Column;
+    use schemajs_primitives::column::types::DataTypes;
+    use schemajs_primitives::column::Column;
     use schemajs_primitives::table::Table;
-    use schemajs_primitives::types::DataTypes;
     use std::collections::HashMap;
     use std::sync::{Arc, RwLock};
     use std::thread;
@@ -123,18 +116,21 @@ mod test {
                         default_value: None,
                         required: false,
                         comment: None,
+                        primary_key: false,
                     },
                 );
 
                 let table = Table {
                     name: "users".to_string(),
                     columns: cols,
-                    module_id: None,
+                    indexes: vec![],
+                    primary_key: "".to_string(),
+                    metadata: Default::default(),
                 };
 
                 let mut writer = db_engine.write().unwrap();
                 let mut db = writer.find_by_name("rust-test".to_string()).unwrap();
-                db.add_table(EngineTable::new(None, "rust-test", table));
+                db.add_table(table);
             }
 
             {

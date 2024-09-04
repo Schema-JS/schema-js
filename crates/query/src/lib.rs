@@ -1,5 +1,8 @@
 pub mod errors;
 pub mod managers;
-pub mod primitives;
-pub mod query_manager;
+mod ops;
+pub mod row;
+pub mod row_json;
+mod search;
 pub mod serializer;
+mod utils;

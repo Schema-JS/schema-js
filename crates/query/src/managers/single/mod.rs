@@ -1,21 +1,20 @@
-pub mod query_shard;
-pub mod query_shard_entry;
+pub mod table_shard;
 
 use crate::errors::QueryError;
-use crate::managers::single::query_shard::QueryShard;
-use crate::primitives::Row;
+use crate::managers::single::table_shard::TableShard;
+use crate::row::Row;
 use chashmap::CHashMap;
-use schemajs_dirs::create_scheme_js_db;
+use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
+use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_primitives::table::Table;
-use std::collections::HashMap;
 use std::hash::Hash;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct SingleQueryManager<T: Row<T>> {
-    pub shards: Vec<QueryShard<T>>,
-    pub tables: Arc<CHashMap<String, Table>>,
+    pub table_names: RwLock<Vec<String>>,
+    pub tables: Arc<CHashMap<String, TableShard<T>>>,
     pub num_shards: usize,
     pub scheme: String,
     pub id: Uuid,
@@ -26,23 +25,8 @@ impl<T: Row<T>> SingleQueryManager<T> {
     pub fn new(scheme: String, num_shards: usize) -> Self {
         let uuid = Uuid::new_v4();
 
-        {
-            create_scheme_js_db(
-                None,
-                format!("{}_{}", scheme.clone(), uuid.to_string()).as_str(),
-            );
-        }
-
-        let mut shards = Vec::with_capacity(num_shards);
-        for _ in 0..num_shards {
-            shards.push(QueryShard::new(
-                scheme.clone().to_string(),
-                uuid.to_string(),
-            ));
-        }
-
         SingleQueryManager {
-            shards,
+            table_names: RwLock::new(vec![]),
             num_shards,
             tables: Arc::new(CHashMap::default()),
             scheme,
@@ -50,29 +34,37 @@ impl<T: Row<T>> SingleQueryManager<T> {
         }
     }
 
-    fn get_shard(&self, index: usize) -> &QueryShard<T> {
-        &self.shards[index]
+    pub fn register_table(&self, table: Table) {
+        self.table_names.write().unwrap().push(table.name.clone());
+        self.tables.insert(
+            table.name.clone(),
+            TableShard::<T>::new(
+                table,
+                None,
+                self.scheme.as_str(),
+                TempDataShardConfig {
+                    max_offsets: TempOffsetTypes::Custom(Some(1000)),
+                },
+            ),
+        );
     }
 
     pub fn insert(&self, row: T) -> Result<Uuid, QueryError> {
         let table_name = row.get_table_name();
         let table = self.tables.get(&table_name);
 
-        if let Some(table) = table {
-            let primary_key = table.primary_key.clone();
-            let column = table
-                .get_column(primary_key.as_str())
-                .ok_or(QueryError::UnknownPrimaryColumn(primary_key.clone()))?;
-            let val = row
-                .get_value(column)
-                .ok_or(QueryError::ValueNotPresent(primary_key))?;
+        if let Some(table_shard) = table {
+            let uuid = row
+                .get_value(&Table::get_internal_uid())
+                .ok_or(QueryError::UnknownUid)?;
 
-            let shard_key = row.hash_key(val.to_string());
+            let serialized_value = row
+                .serialize()
+                .map_err(|e| QueryError::InvalidSerialization)?;
 
-            let shard_index = shard_key % self.num_shards as u64;
-            let shard = self.get_shard(shard_index as usize);
+            table_shard.temps.insert(serialized_value)?;
 
-            Ok(shard.insert(table.clone(), row)?)
+            Ok(uuid.as_uuid().unwrap().clone())
         } else {
             Err(QueryError::InvalidTable(table_name))
         }

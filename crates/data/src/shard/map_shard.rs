@@ -180,8 +180,6 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
                 // Determine which shard the index belongs to
                 let shard_index = index / breaking_point_usize;
 
-                println!("Shard Index {}", shard_index);
-
                 if shard_index >= num_shards {
                     return Err(ShardErrors::OutOfRange);
                 }

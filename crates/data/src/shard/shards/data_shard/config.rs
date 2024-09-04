@@ -8,7 +8,7 @@ pub struct DataShardConfig {
 
 impl ShardConfig for DataShardConfig {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TempDataShardConfig {
     pub max_offsets: TempOffsetTypes,
 }

@@ -1,7 +1,7 @@
-use crate::rows::json_row::RowJson;
 use schemajs_dirs::create_scheme_js_db;
 use schemajs_primitives::table::Table;
 use schemajs_query::managers::single::SingleQueryManager;
+use schemajs_query::row_json::RowJson;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -24,8 +24,6 @@ impl EngineDb {
     }
 
     pub fn add_table(&self, table: Table) {
-        self.query_manager
-            .tables
-            .insert(table.name.to_string(), table);
+        self.query_manager.register_table(table);
     }
 }

@@ -175,6 +175,8 @@ dependencies = [
  "schemajs_workers",
  "serde",
  "tokio",
+ "tokio-util",
+ "uuid",
  "walkdir",
 ]
 
@@ -2304,6 +2306,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "schemajs_index"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "enum-as-inner",
+ "rand 0.8.5",
+ "schemajs_data",
+ "serde",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "schemajs_module_loader"
 version = "0.1.0"
 dependencies = [
@@ -2346,6 +2363,7 @@ version = "0.1.0"
 dependencies = [
  "deno_core",
  "enum-as-inner",
+ "schemajs_index",
  "serde",
  "serde_json",
  "thiserror",
@@ -2363,10 +2381,13 @@ dependencies = [
  "enum-as-inner",
  "schemajs_data",
  "schemajs_dirs",
+ "schemajs_index",
  "schemajs_primitives",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
+ "tokio",
  "uuid",
 ]
 

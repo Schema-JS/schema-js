@@ -4,6 +4,7 @@ use uuid::Uuid;
 pub mod map_shard;
 pub mod shard_collection;
 pub mod shards;
+pub mod temp_collection;
 pub mod temp_map_shard;
 
 pub trait ShardConfig: Clone {}
@@ -85,6 +86,6 @@ pub trait Shard<Opts: ShardConfig> {
     fn get_id(&self) -> String;
 }
 
-pub trait TempShardConfig<Opts: ShardConfig> {
+pub trait TempShardConfig<Opts: ShardConfig>: Clone {
     fn to_config(&self) -> Opts;
 }

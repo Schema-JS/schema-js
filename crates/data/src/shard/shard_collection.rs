@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock};
 #[derive(Debug)]
 pub struct ShardCollection<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>> {
     pub data: Arc<RwLock<MapShard<S, Opts>>>,
-    pub temps: TempMapShard<S, Opts, TempOpts>,
+    pub temps: Arc<RwLock<TempMapShard<S, Opts, TempOpts>>>,
 }
 
 impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
@@ -20,7 +20,12 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
 
         Self {
             data: arc_lock.clone(),
-            temps: TempMapShard::new(folder, prefix, arc_lock, temp_config),
+            temps: Arc::new(RwLock::new(TempMapShard::new(
+                folder,
+                prefix,
+                arc_lock,
+                temp_config,
+            ))),
         }
     }
 }

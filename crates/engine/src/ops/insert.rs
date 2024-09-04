@@ -1,10 +1,10 @@
 use crate::engine::SchemeJsEngine;
-use crate::rows::json_row::{RowData, RowJson};
 use deno_core::{op2, serde_json, OpState};
 use schemajs_query::errors::QueryError;
+use schemajs_query::row_json::{RowData, RowJson};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 #[op2(async)]
