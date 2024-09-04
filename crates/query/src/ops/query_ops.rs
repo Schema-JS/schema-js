@@ -1,5 +1,7 @@
 use enum_as_inner::EnumAsInner;
 use schemajs_primitives::column::types::DataValue;
+use schemajs_primitives::index::Index;
+use std::fmt::Display;
 
 #[derive(Debug, Eq, PartialEq, Clone, EnumAsInner)]
 pub enum FilterType {
@@ -11,10 +13,24 @@ pub enum FilterType {
     NotEqual,
 }
 
+impl Display for FilterType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            FilterType::Equal => String::from("="),
+            FilterType::GreaterThan => String::from(">"),
+            FilterType::LowerThan => String::from("<"),
+            FilterType::GreaterOrEqualTo => String::from(">="),
+            FilterType::LowerOrEqualTo => String::from("<="),
+            FilterType::NotEqual => String::from("!="),
+        };
+        write!(f, "{}", str)
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct QueryVal {
     pub key: String,
-    pub filter_type: FilterType,
+    pub filter_type: String,
     pub value: DataValue,
 }
 
@@ -23,4 +39,11 @@ pub enum QueryOps {
     And(Vec<QueryOps>),
     Or(Vec<QueryOps>),
     Condition(QueryVal),
+}
+
+#[derive(Debug, Clone, EnumAsInner, PartialEq)]
+pub enum QueryPlan {
+    And(Vec<QueryPlan>),  // Nested AND operations
+    Or(Vec<QueryPlan>),   // Nested OR operations
+    Index(Option<Index>), // A specific index to use
 }

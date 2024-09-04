@@ -1,4 +1,4 @@
-mod table_shard;
+pub mod table_shard;
 
 use crate::errors::QueryError;
 use crate::managers::single::table_shard::TableShard;

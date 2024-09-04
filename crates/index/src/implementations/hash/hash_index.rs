@@ -67,6 +67,10 @@ impl Index for HashIndex {
     fn remove(&mut self, key: &IndexKeyType) -> Option<u64> {
         todo!()
     }
+
+    fn supported_search_operators(&self) -> Vec<String> {
+        vec![String::from("=")]
+    }
 }
 
 #[cfg(test)]
