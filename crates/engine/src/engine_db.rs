@@ -19,7 +19,7 @@ impl EngineDb {
         EngineDb {
             name: name.to_string(),
             db_folder,
-            query_manager: Arc::new(SingleQueryManager::new(name.to_string(), 10)),
+            query_manager: Arc::new(SingleQueryManager::new(name.to_string())),
         }
     }
 

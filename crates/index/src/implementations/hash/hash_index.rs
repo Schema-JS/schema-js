@@ -61,7 +61,7 @@ impl Index for HashIndex {
     }
 
     fn get(&self, key: &IndexKeyType) -> Option<u64> {
-        todo!()
+        self.find_index(key.clone().into_sha256().unwrap())
     }
 
     fn remove(&mut self, key: &IndexKeyType) -> Option<u64> {

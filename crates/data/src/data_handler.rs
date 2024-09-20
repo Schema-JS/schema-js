@@ -13,6 +13,7 @@ pub struct DataHandler {
 
 impl DataHandler {
     unsafe fn new_from_path<P: AsRef<Path> + Clone>(path: P) -> std::io::Result<Self> {
+        println!("{}", path.as_ref().to_str().unwrap().to_string());
         let load_file = OpenOptions::new()
             .create(true)
             .read(true)

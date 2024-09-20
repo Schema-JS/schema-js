@@ -15,19 +15,17 @@ use uuid::Uuid;
 pub struct SingleQueryManager<T: Row<T>> {
     pub table_names: RwLock<Vec<String>>,
     pub tables: Arc<CHashMap<String, TableShard<T>>>,
-    pub num_shards: usize,
     pub scheme: String,
     pub id: Uuid,
 }
 
 impl<T: Row<T>> SingleQueryManager<T> {
     // Initialize the database with empty shards
-    pub fn new(scheme: String, num_shards: usize) -> Self {
+    pub fn new(scheme: String) -> Self {
         let uuid = Uuid::new_v4();
 
         SingleQueryManager {
             table_names: RwLock::new(vec![]),
-            num_shards,
             tables: Arc::new(CHashMap::default()),
             scheme,
             id: uuid,
@@ -52,6 +50,8 @@ impl<T: Row<T>> SingleQueryManager<T> {
     pub fn insert(&self, row: T) -> Result<Uuid, QueryError> {
         let table_name = row.get_table_name();
         let table = self.tables.get(&table_name);
+
+        // TODO: Config to generate an UUID if not present
 
         if let Some(table_shard) = table {
             let uuid = row

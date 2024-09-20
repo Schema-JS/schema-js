@@ -43,13 +43,14 @@ impl<T: Row<T>> TableShard<T> {
 
         let refs = Arc::new(RwLock::new(map_shard));
 
-        let temp_collection = TempCollection::new(
-            refs.clone(),
-            5,
-            table_path.join("temps"),
-            "temp_",
-            temp_config,
-        );
+        let temps_folder = table_path.join("temps");
+
+        if !temps_folder.exists() {
+            std::fs::create_dir_all(temps_folder.clone()).unwrap();
+        }
+
+        let temp_collection =
+            TempCollection::new(refs.clone(), 5, temps_folder, "temp_", temp_config);
 
         let mut indexes = CHashMap::new();
 
