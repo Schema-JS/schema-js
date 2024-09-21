@@ -118,7 +118,7 @@ impl Shard<DataShardConfig> for DataShard {
         self.path.clone()
     }
 
-    fn insert_item(&self, data: Vec<u8>) -> Result<u64, ShardErrors> {
+    fn insert_item(&self, data: &[u8]) -> Result<u64, ShardErrors> {
         let has_space = { self.has_space() };
         if has_space {
             let mut header_write = self.header.write().unwrap();
@@ -129,7 +129,7 @@ impl Shard<DataShardConfig> for DataShard {
                     .expect("Failed to seek to end of file");
 
                 // Write the item to the file
-                file.write_all(&data).expect("Failed to write item to file");
+                file.write_all(data).expect("Failed to write item to file");
 
                 // Update the header with the new offset
                 header_write.add_next_offset(end_of_file, file).unwrap();
@@ -190,7 +190,7 @@ mod test {
         ];
 
         for data in strs.into_iter() {
-            data_shard.insert_item(data.as_bytes().to_vec()).unwrap();
+            data_shard.insert_item(&data.as_bytes().to_vec()).unwrap();
         }
         /*
         unsafe {
@@ -209,7 +209,7 @@ mod test {
         let item = data_shard.read_item_from_index(5).unwrap();
         assert_eq!(item, "1".as_bytes().to_vec());
 
-        let item = data_shard.insert_item(vec![1, 2, 3]);
+        let item = data_shard.insert_item(&vec![1, 2, 3]);
         assert!(item.is_err());
         assert!(item.err().unwrap().is_out_of_positions());
 
@@ -244,7 +244,7 @@ mod test {
         ];
 
         for data in strs.into_iter() {
-            data_shard.insert_item(data.as_bytes().to_vec()).unwrap();
+            data_shard.insert_item(&data.as_bytes().to_vec()).unwrap();
         }
 
         let new_data_shard = DataShard::new(
@@ -279,7 +279,7 @@ mod test {
             ref_shard
                 .write()
                 .unwrap()
-                .insert_item(b"Hello World".to_vec())
+                .insert_item(&b"Hello World".to_vec())
                 .unwrap();
         });
 
@@ -288,7 +288,7 @@ mod test {
             ref_shard
                 .write()
                 .unwrap()
-                .insert_item(b"Cats are beautiful".to_vec())
+                .insert_item(&b"Cats are beautiful".to_vec())
                 .unwrap();
         });
 

@@ -110,7 +110,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         let build_entry = self.build_entry(key_vec, value_vec);
         let entry_index_unit: Vec<u8> = build_entry.into();
 
-        self.data.write().unwrap().insert_row(entry_index_unit);
+        self.data.write().unwrap().insert_row(&entry_index_unit);
 
         if self.binary_order {
             self.keep_binary_order();

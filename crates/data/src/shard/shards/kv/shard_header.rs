@@ -110,6 +110,8 @@ impl KvShardHeader {
                     buffer.extend_from_slice(&id_bytes);
                 }
 
+                println!("{:?}", buffer);
+
                 // Write the buffer to the file
                 file.write_all(&buffer)
                     .expect("Failed to write Index header");
@@ -135,10 +137,7 @@ impl KvShardHeader {
 
         {
             let value_size_bytes = reader
-                .read_pointer(
-                    U64_SIZE as u64 + U64_SIZE as u64 + U64_SIZE as u64,
-                    U64_SIZE,
-                )
+                .read_pointer(U64_SIZE as u64 + U64_SIZE as u64, U64_SIZE)
                 .unwrap();
             let value_size_bytes: [u8; 8] = value_size_bytes.try_into().unwrap();
             self.value_size = u64::from_le_bytes(value_size_bytes);
@@ -147,13 +146,21 @@ impl KvShardHeader {
         {
             let id_bytes = reader
                 .read_pointer(
-                    (U64_SIZE + U64_SIZE + U64_SIZE + U64_SIZE) as u64,
+                    (U64_SIZE + U64_SIZE + U64_SIZE) as u64,
                     UUID_BYTE_LEN as usize,
                 )
                 .unwrap();
             let id_bytes = id_bytes.try_into().unwrap();
             self.id = Uuid::from_bytes_le(id_bytes);
         }
+
+        println!(
+            "{} {} {} {}",
+            self.max_capacity.unwrap(),
+            self.items_len,
+            self.value_size,
+            self.id.to_string()
+        );
     }
 
     pub fn increment_len(&mut self, file: &mut File) -> u64 {

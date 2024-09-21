@@ -183,7 +183,7 @@ impl<T: Row<T>> QuerySearchManager<T> {
         for pointer in pointers {
             let tbl_data = get_table_shard.data.read().unwrap();
             let data = tbl_data.get_element(pointer as usize).unwrap();
-            results.push(T::from(data))
+            results.push(T::from(&data))
         }
 
         Ok(results)

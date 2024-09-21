@@ -56,7 +56,6 @@ impl SchemeJsEngine {
     }
 
     pub fn register_tables(&mut self, schema_name: &str, loaded_tables: Vec<Table>) {
-        let data_path_dir = self.data_path_dir.clone();
         let mut db = self.find_by_name(schema_name.to_string()).unwrap();
         for table in loaded_tables {
             db.add_table(table);

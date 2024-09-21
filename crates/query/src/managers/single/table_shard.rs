@@ -35,7 +35,7 @@ use std::sync::{Arc, RwLock};
 ///   even though it doesn’t directly store a `T`.
 #[derive(Debug)]
 pub struct TableShard<T: Row<T>> {
-    pub table: Table,
+    pub table: Arc<Table>,
     pub data: Arc<RwLock<MapShard<DataShard, DataShardConfig>>>,
     pub temps: TempCollection<DataShard, DataShardConfig, TempDataShardConfig>,
     pub indexes: Arc<CHashMap<String, IndexTypeValue>>,
@@ -104,7 +104,7 @@ impl<T: Row<T>> TableShard<T> {
         let mut tbl_shard = Self {
             indexes: Arc::new(indexes),
             data: refs.clone(),
-            table,
+            table: Arc::new(table),
             temps: temp_collection,
             _marker: PhantomData,
         };
@@ -120,17 +120,16 @@ impl<T: Row<T>> TableShard<T> {
     /// and potentially future logic related to table loading.
     pub fn init(&mut self) {
         let indexes = self.indexes.clone();
-        let table = self.table.clone();
 
         for temp_shard in self.temps.temps.iter() {
             let indexes = indexes.clone();
-            let table = table.clone();
+            let table = self.table.clone();
 
             temp_shard
                 .write()
                 .unwrap()
                 .set_on_reconcile(Box::new(move |row, pos| {
-                    let row: T = T::from(row.clone());
+                    let row: T = T::from(row);
                     Self::insert_indexes(table.clone(), indexes.clone(), &row, pos);
                     Ok(())
                 }))
@@ -140,7 +139,7 @@ impl<T: Row<T>> TableShard<T> {
     /// This method handles automatically indexing the rows that match the index in the Table.
     /// It is called during the reconciling process through `set_on_reconcile` in the TempMapShard.
     pub fn insert_indexes(
-        table: Table,
+        table: Arc<Table>,
         indexes: Arc<CHashMap<String, IndexTypeValue>>,
         data: &T,
         pos_index: usize,

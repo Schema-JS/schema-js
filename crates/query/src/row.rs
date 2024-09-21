@@ -13,7 +13,7 @@ use std::hash::Hash;
 /// - `get_value`: Retrieves the value of a specific column from the row, returning `Option<DataValue>`.
 /// - `get_table_name`: Returns the name of the table to which the row belongs as a `String`.
 /// - `validate`: Validates the row, ensuring it adheres to certain rules or constraints, returning a `bool` indicating whether the row is valid.
-pub trait Row<T>: RowSerializer<T> + From<Vec<u8>> {
+pub trait Row<T>: RowSerializer<T> + for<'a> From<&'a [u8]> {
     /// Retrieves the value from a specific column in the row.
     ///
     /// # Parameters:

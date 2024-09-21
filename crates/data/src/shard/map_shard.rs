@@ -100,7 +100,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
         None
     }
 
-    pub fn insert_row(&mut self, data: Vec<u8>) -> usize {
+    pub fn insert_row(&mut self, data: &[u8]) -> usize {
         let curr_master_has_space = self.current_master_shard.has_space();
 
         if !curr_master_has_space {
@@ -137,6 +137,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
                 None => local_index as usize,
                 Some(breaking_point) => {
                     let reader = self.past_master_shards.read().unwrap();
+                    println!("{}", reader.len());
                     let curr_items = reader.len() * breaking_point as usize;
                     curr_items + local_index as usize
                 }

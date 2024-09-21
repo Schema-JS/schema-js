@@ -66,9 +66,9 @@ impl Debug for RowJson {
     }
 }
 
-impl From<Vec<u8>> for RowJson {
-    fn from(value: Vec<u8>) -> Self {
-        RowJson::_deserialize(&value).unwrap()
+impl From<&[u8]> for RowJson {
+    fn from(value: &[u8]) -> Self {
+        RowJson::_deserialize(value).unwrap()
     }
 }
 

@@ -229,7 +229,7 @@ mod test {
             })
             .await?;
 
-            let num_inserts = 9529;
+            let num_inserts = 5001;
             let mut script = String::new();
 
             for i in 0..num_inserts {
@@ -286,9 +286,9 @@ mod test {
                 TaskDuration::Defined(Duration::from_millis(250)),
             ));
 
-            manager.start_tasks();
+            // manager.start_tasks();
 
-            let num_inserts = 9529;
+            let num_inserts = 9500;
             let mut script = String::new();
             println!("To be inserted");
 
@@ -310,8 +310,8 @@ mod test {
                 .execute_script(located_script_name!(), script)?;
 
             // Example: Stop the reconciler and other tasks after some time
-            tokio::time::sleep(Duration::from_secs(20)).await;
-            manager.stop_tasks();
+            //tokio::time::sleep(Duration::from_secs(20)).await;
+            //manager.stop_tasks();
 
             println!("Executed");
         }

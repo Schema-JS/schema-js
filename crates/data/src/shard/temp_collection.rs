@@ -52,7 +52,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         }
     }
 
-    pub fn insert(&self, data: Vec<u8>) -> Result<u64, ShardErrors> {
+    pub fn insert(&self, data: &[u8]) -> Result<u64, ShardErrors> {
         let mut next_shard = self
             .get_next_shard()
             .write()

@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 pub struct OnReconcileCb {
-    func: Option<Box<dyn Fn(&Vec<u8>, usize) -> Result<(), ()> + Send + Sync + 'static>>,
+    func: Option<Box<dyn Fn(&[u8], usize) -> Result<(), ()> + Send + Sync + 'static>>,
 }
 
 impl Debug for OnReconcileCb {
@@ -48,7 +48,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
 
     pub fn set_on_reconcile(
         &mut self,
-        data: Box<dyn Fn(&Vec<u8>, usize) -> Result<(), ()> + Send + Sync + 'static>,
+        data: Box<dyn Fn(&[u8], usize) -> Result<(), ()> + Send + Sync + 'static>,
     ) {
         self.on_reconcile = OnReconcileCb { func: Some(data) };
     }
@@ -62,7 +62,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         S::new(shard_path, self.temp_opts.to_config(), None)
     }
 
-    pub fn insert_row(&mut self, data: Vec<u8>) -> Result<u64, ShardErrors> {
+    pub fn insert_row(&mut self, data: &[u8]) -> Result<u64, ShardErrors> {
         let find_usable_shard = { self.temp_shards.iter().position(|i| i.has_space()) };
 
         let shard_index = match find_usable_shard {
@@ -106,12 +106,14 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
 
     fn reconcile(&self, from: &S, target: &mut MapShard<S, Opts>) {
         let (shard, indexes) = Self::get_reconciliation_data(from);
+        let now = std::time::Instant::now();
         for item_index in indexes {
             let binary_item = shard.read_item_from_index(item_index as usize).unwrap();
-            let pos = target.insert_row(binary_item.clone());
+            let pos = target.insert_row(&binary_item);
             println!("pos {}", pos);
             self.call_on_reconcile(&binary_item, pos).unwrap();
         }
+        println!("Reconciling took {:?}", now.elapsed());
     }
 
     pub fn reconcile_all(&mut self) {

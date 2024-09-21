@@ -144,7 +144,7 @@ impl<T: Row<T>> SingleQueryManager<T> {
                 .serialize()
                 .map_err(|e| QueryError::InvalidSerialization)?;
 
-            table_shard.temps.insert(serialized_value)?;
+            table_shard.temps.insert(&serialized_value)?;
 
             Ok(uuid.as_uuid().unwrap().clone())
         } else {
