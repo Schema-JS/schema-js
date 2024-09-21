@@ -64,9 +64,6 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
 
     pub fn insert_row(&mut self, data: Vec<u8>) -> Result<u64, ShardErrors> {
         let find_usable_shard = { self.temp_shards.iter().position(|i| i.has_space()) };
-        for (i, x) in self.temp_shards.iter().enumerate() {
-            // println!("{} has space? {}", i, x.has_space());
-        }
 
         let shard_index = match find_usable_shard {
             None => {
@@ -112,6 +109,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         for item_index in indexes {
             let binary_item = shard.read_item_from_index(item_index as usize).unwrap();
             let pos = target.insert_row(binary_item.clone());
+            println!("pos {}", pos);
             self.call_on_reconcile(&binary_item, pos).unwrap();
         }
     }

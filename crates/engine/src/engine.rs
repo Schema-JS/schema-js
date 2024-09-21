@@ -81,9 +81,12 @@ impl SchemeJsEngine {
 mod test {
     use crate::engine::SchemeJsEngine;
     use schemajs_data::shard::Shard;
-    use schemajs_primitives::column::types::DataTypes;
+    use schemajs_primitives::column::types::{DataTypes, DataValue};
     use schemajs_primitives::column::Column;
     use schemajs_primitives::table::Table;
+    use schemajs_query::row::Row;
+    use schemajs_query::row_json::{RowData, RowJson};
+    use serde_json::json;
     use std::collections::HashMap;
     use std::sync::{Arc, RwLock};
     use std::thread;
@@ -95,13 +98,15 @@ mod test {
         // Add database
         {
             let mut writer = db_engine.write().unwrap();
-            writer.add_database("rust-test");
+            writer.add_database("rust-test-random");
         } // Release the write lock
 
         {
             {
                 let mut reader = db_engine.read().unwrap();
-                let db = reader.find_by_name_ref("rust-test".to_string()).unwrap();
+                let db = reader
+                    .find_by_name_ref("rust-test-random".to_string())
+                    .unwrap();
 
                 assert_eq!(db.db_folder.exists(), true);
             }
@@ -129,15 +134,8 @@ mod test {
                 };
 
                 let mut writer = db_engine.write().unwrap();
-                let mut db = writer.find_by_name("rust-test".to_string()).unwrap();
+                let mut db = writer.find_by_name("rust-test-random".to_string()).unwrap();
                 db.add_table(table);
-            }
-
-            {
-                let mut reader = db_engine.read().unwrap();
-                let db = reader.find_by_name_ref("rust-test".to_string()).unwrap();
-                let users = db.get_table_ref("users").unwrap();
-                assert_eq!(users.tbl_folder.exists(), true);
             }
         }
 
@@ -146,23 +144,39 @@ mod test {
         let ref_shard1 = Arc::clone(&arc);
         let thread_1 = thread::spawn(move || {
             let mut writer = ref_shard1.write().unwrap();
-            let table = writer
-                .find_by_name("rust-test".to_string())
+            writer
+                .find_by_name_ref("rust-test-random".to_string())
                 .unwrap()
-                .get_table("users")
+                .query_manager
+                .insert(RowJson {
+                    value: RowData {
+                        table: "users".to_string(),
+                        value: json!({
+                            "_uid": "97ad4bba-98c5-4a9e-80d8-6bf6302fb883",
+                            "id": "1"
+                        }),
+                    },
+                })
                 .unwrap();
-            table.shard_collection.temps.insert_row(b"1".to_vec());
         });
 
         let ref_shard2 = Arc::clone(&arc);
         let thread_2 = thread::spawn(move || {
             let mut writer = ref_shard2.write().unwrap();
-            let table = writer
-                .find_by_name("rust-test".to_string())
+            writer
+                .find_by_name_ref("rust-test-random".to_string())
                 .unwrap()
-                .get_table("users")
+                .query_manager
+                .insert(RowJson {
+                    value: RowData {
+                        table: "users".to_string(),
+                        value: json!({
+                            "_uid": "2ec92148-646d-4521-974f-b4a6d422c195",
+                            "id": "2"
+                        }),
+                    },
+                })
                 .unwrap();
-            table.shard_collection.temps.insert_row(b"2".to_vec());
         });
 
         thread_1.join().unwrap();
@@ -171,20 +185,24 @@ mod test {
         // Assuming `temp_shards` is part of `EngineTable` and is a `RwLock<HashMap<String, Shard>>`
         {
             let mut reader = db_engine.write().unwrap();
-            let mut db = reader.find_by_name("rust-test".to_string()).unwrap();
-            let users = db.get_table("users").unwrap();
-            let temp_shards = &users.shard_collection.temps;
+            let mut db = reader.find_by_name("rust-test-random".to_string()).unwrap();
+            let tbl = db.query_manager.tables.get("users").unwrap();
+            tbl.temps.reconcile_all();
 
-            let reader = temp_shards.temp_shards.read().unwrap();
-            let shards = reader.iter().next().unwrap();
-            let first_item = shards.read_item_from_index(0).unwrap();
-            let second_item = shards.read_item_from_index(1).unwrap();
+            let a = tbl.data.read().unwrap().get_element(0).unwrap();
+            let b = tbl.data.read().unwrap().get_element(1).unwrap();
 
-            let mut items: Vec<Vec<u8>> = vec![first_item, second_item];
+            let a = RowJson::from(a);
+            let b = RowJson::from(b);
 
-            items.sort();
-
-            assert_eq!(items, vec![b"1".to_vec(), b"2".to_vec()]);
+            assert_eq!(
+                a.get_value(tbl.table.get_column("id").unwrap()).unwrap(),
+                DataValue::String("1".to_string())
+            );
+            assert_eq!(
+                b.get_value(tbl.table.get_column("id").unwrap()).unwrap(),
+                DataValue::String("2".to_string())
+            );
         }
     }
 }

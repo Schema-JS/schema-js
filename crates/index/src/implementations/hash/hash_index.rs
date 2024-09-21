@@ -77,6 +77,7 @@ impl Index for HashIndex {
 mod test {
     use crate::composite_key::CompositeKey;
     use crate::implementations::hash::hash_index::HashIndex;
+    use crate::index_keys::IndexKeyType;
     use crate::keys::index_key_sha256::IndexKeySha256;
     use crate::types::Index;
     use tempfile::tempdir;
@@ -177,7 +178,7 @@ mod test {
             let key = IndexKeySha256::from(composite_key);
             println!("Adding {}", key.to_string());
 
-            index.insert(key, rand::random());
+            index.insert(IndexKeyType::Sha256(key), rand::random());
         }
 
         println!("After loop");

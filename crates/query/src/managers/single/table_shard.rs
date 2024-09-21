@@ -15,6 +15,24 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
+/// `TableShard` is a structure that manages the sharding of a specific table's data.
+/// It is responsible for storing the table's data in a main shard, handling temporary shards
+/// for efficient insertion, and managing the indexes associated with the table.
+///
+/// The generic type `T` represents the type of rows the table holds, and it must implement the `Row` trait.
+///
+/// # Fields:
+/// - `table`: The `Table` structure representing the schema of the table being managed.
+/// - `data`: An `Arc<RwLock<MapShard<DataShard, DataShardConfig>>>` that represents the main shard where the table's data is stored.
+///   This is a thread-safe reference to the shard, which allows concurrent reads and writes to the data.
+/// - `temps`: A `TempCollection<DataShard, DataShardConfig, TempDataShardConfig>` that manages temporary shards for storing data
+///   before it is reconciled into the main shard. Temporary shards allow for faster writes and efficient sharding operations.
+/// - `indexes`: An `Arc<CHashMap<String, IndexTypeValue>>` that contains the table's indexes, stored in a thread-safe concurrent hash map.
+///   The key is the index name, and the value is an `IndexTypeValue`, which holds the actual index structure.
+///
+/// - `_marker`: A `PhantomData<T>` used to indicate the generic type `T` in the struct.
+///   It is a marker used to tell the Rust compiler that this struct works with a specific row type,
+///   even though it doesn’t directly store a `T`.
 #[derive(Debug)]
 pub struct TableShard<T: Row<T>> {
     pub table: Table,
@@ -25,6 +43,17 @@ pub struct TableShard<T: Row<T>> {
 }
 
 impl<T: Row<T>> TableShard<T> {
+    /// Creates a new `TableShard` instance for a given table. This method is responsible for setting up
+    /// the table's main data shard, temporary shards, and indexes.
+    ///
+    /// # Parameters:
+    /// - `table`: The `Table` object representing the structure of the table to be sharded.
+    /// - `base_path`: An optional base path for the table files. If not provided, a default path will be used.
+    /// - `scheme`: The database schema that organizes how the table's data and indexes are structured.
+    /// - `temp_config`: Configuration for the temporary shard that handles data before being reconciled with the main shard.
+    ///
+    /// # Returns:
+    /// - A `TableShard` instance that handles data storage, sharding, and indexing for the provided table.
     pub fn new(
         table: Table,
         base_path: Option<PathBuf>,
@@ -85,6 +114,10 @@ impl<T: Row<T>> TableShard<T> {
         tbl_shard
     }
 
+    /// Initializes everything related to the current table context.
+    /// Such as loading the indexes
+    /// Setting the reconciliation callbacks
+    /// and potentially future logic related to table loading.
     pub fn init(&mut self) {
         let indexes = self.indexes.clone();
         let table = self.table.clone();
@@ -104,6 +137,8 @@ impl<T: Row<T>> TableShard<T> {
         }
     }
 
+    /// This method handles automatically indexing the rows that match the index in the Table.
+    /// It is called during the reconciling process through `set_on_reconcile` in the TempMapShard.
     pub fn insert_indexes(
         table: Table,
         indexes: Arc<CHashMap<String, IndexTypeValue>>,
