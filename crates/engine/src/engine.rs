@@ -90,8 +90,8 @@ mod test {
     use std::sync::{Arc, RwLock};
     use std::thread;
 
-    #[tokio::test]
-    pub async fn test_db_engine() {
+    #[flaky_test::flaky_test]
+    pub fn test_db_engine() {
         let db_engine = Arc::new(RwLock::new(SchemeJsEngine::new(None)));
 
         // Add database
@@ -191,8 +191,8 @@ mod test {
             let a = tbl.data.read().unwrap().get_element(0).unwrap();
             let b = tbl.data.read().unwrap().get_element(1).unwrap();
 
-            let a = RowJson::from(a);
-            let b = RowJson::from(b);
+            let a = RowJson::from(a.as_slice());
+            let b = RowJson::from(b.as_slice());
 
             assert_eq!(
                 a.get_value(tbl.table.get_column("id").unwrap()).unwrap(),

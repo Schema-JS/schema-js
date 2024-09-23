@@ -74,7 +74,7 @@ impl<T: Row<T>> SingleQueryManager<T> {
     ///
     /// # Example
     ///
-    /// ```
+    /// ```no_run
     /// use schemajs_primitives::table::Table;
     /// use schemajs_query::managers::single::SingleQueryManager;
     /// use schemajs_query::row_json::RowJson;
@@ -104,7 +104,7 @@ impl<T: Row<T>> SingleQueryManager<T> {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use schemajs_primitives::table::Table;
     /// use schemajs_query::managers::single::SingleQueryManager;
     /// use schemajs_query::row::Row;

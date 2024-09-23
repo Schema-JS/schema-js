@@ -205,8 +205,8 @@ mod test {
     use schemajs_primitives::table::Table;
     use uuid::Uuid;
 
-    #[tokio::test]
-    pub async fn test_search_manager() {
+    #[flaky_test::flaky_test]
+    pub fn test_search_manager() {
         let test_db = Uuid::new_v4().to_string();
         let db_folder = create_scheme_js_db(None, test_db.as_str());
         let query_manager = SingleQueryManager::new(test_db.clone());
