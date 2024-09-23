@@ -54,6 +54,19 @@ impl Index for HashIndex {
         IndexKeyType::Sha256(IndexKeySha256::from(key))
     }
 
+    fn bulk_insert(&self, data: Vec<(IndexKeyType, u64)>) {
+        self.index.raw_insert(
+            data.into_iter()
+                .map(|i| {
+                    (
+                        i.0.into_sha256().unwrap(),
+                        i.1.to_le_bytes().to_vec().into(),
+                    )
+                })
+                .collect(),
+        )
+    }
+
     fn insert(&self, key: IndexKeyType, row_position: u64) {
         let key = key.into_sha256().unwrap();
         self.index

@@ -1,12 +1,12 @@
 use crate::data_handler::DataHandler;
 use crate::errors::ShardErrors;
-use crate::shard::map_shard::MapShard;
 use crate::shard::shards::data_shard::config::DataShardConfig;
 use crate::shard::shards::data_shard::shard_header::DataShardHeader;
-use crate::shard::Shard;
+use crate::shard::{AvailableSpace, Shard};
+use crate::utils::flatten;
 use crate::U64_SIZE;
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Error, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
@@ -88,6 +88,20 @@ impl Shard<DataShardConfig> for DataShard {
         }
     }
 
+    fn has_space(&self) -> bool {
+        let header = self.header.read().unwrap();
+
+        header.has_space()
+    }
+
+    fn breaking_point(&self) -> Option<u64> {
+        Some(self.header.read().unwrap().get_max_offsets())
+    }
+
+    fn get_path(&self) -> PathBuf {
+        self.path.clone()
+    }
+
     fn get_last_index(&self) -> i64 {
         let header_reader = self.header.read().unwrap();
         let last_index = header_reader.get_last_offset_index();
@@ -104,45 +118,46 @@ impl Shard<DataShardConfig> for DataShard {
         }
     }
 
-    fn breaking_point(&self) -> Option<u64> {
-        Some(self.header.read().unwrap().get_max_offsets())
-    }
-
-    fn has_space(&self) -> bool {
+    fn available_space(&self) -> AvailableSpace {
         let header = self.header.read().unwrap();
 
-        header.has_space()
+        AvailableSpace::Fixed(header.available_space())
     }
 
-    fn get_path(&self) -> PathBuf {
-        self.path.clone()
-    }
+    fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
+        let mut header_write = self.header.write().unwrap();
+        let op = self.data.write().unwrap().operate(|file| {
+            let write_data = flatten(data);
 
-    fn insert_item(&self, data: &[u8]) -> Result<u64, ShardErrors> {
-        let has_space = { self.has_space() };
-        if has_space {
-            let mut header_write = self.header.write().unwrap();
-            let op = self.data.write().unwrap().operate(|file| {
-                // Calculate the current end of the file
-                let end_of_file = file
-                    .seek(SeekFrom::End(0))
-                    .expect("Failed to seek to end of file");
+            // Calculate the current end of the file
+            let end_of_file = file
+                .seek(SeekFrom::End(0))
+                .expect("Failed to seek to end of file");
 
-                // Write the item to the file
-                file.write_all(data).expect("Failed to write item to file");
+            // Write the item to the file
+            file.write_all(&write_data)
+                .expect("Failed to write item to file");
 
-                // Update the header with the new offset
-                header_write.add_next_offset(end_of_file, file).unwrap();
+            let mut curr_offset = end_of_file;
 
-                Ok(header_write.get_last_offset_index())
-            });
-
-            match op {
-                Ok(offset) => Ok(offset as u64),
-                Err(_) => Err(ShardErrors::FlushingError),
+            for item in data {
+                header_write
+                    .add_next_offset(curr_offset, file)
+                    .map_err(|e| Error::new(ErrorKind::OutOfMemory, "Out of position"))?;
+                curr_offset += item.len() as u64;
             }
-        } else {
-            Err(ShardErrors::OutOfPositions)
+
+            Ok(header_write.get_last_offset_index())
+        });
+
+        match op {
+            Ok(offset) => Ok(offset as u64),
+            Err(e) => {
+                if e.kind() == ErrorKind::OutOfMemory {
+                    return Err(ShardErrors::OutOfPositions);
+                }
+                Err(ShardErrors::FlushingError)
+            }
         }
     }
 
@@ -189,9 +204,9 @@ mod test {
             "String",
         ];
 
-        for data in strs.into_iter() {
-            data_shard.insert_item(&data.as_bytes().to_vec()).unwrap();
-        }
+        let collect_into_slices: Vec<&[u8]> = strs.iter().map(|i| i.as_bytes()).collect();
+        data_shard.insert_item(&collect_into_slices).unwrap();
+
         /*
         unsafe {
             let reader = shards.data.read().unwrap();
@@ -209,7 +224,7 @@ mod test {
         let item = data_shard.read_item_from_index(5).unwrap();
         assert_eq!(item, "1".as_bytes().to_vec());
 
-        let item = data_shard.insert_item(&vec![1, 2, 3]);
+        let item = data_shard.insert_item(&[&vec![1, 2, 3]]);
         assert!(item.is_err());
         assert!(item.err().unwrap().is_out_of_positions());
 
@@ -244,7 +259,9 @@ mod test {
         ];
 
         for data in strs.into_iter() {
-            data_shard.insert_item(&data.as_bytes().to_vec()).unwrap();
+            data_shard
+                .insert_item(&[&data.as_bytes().to_vec()])
+                .unwrap();
         }
 
         let new_data_shard = DataShard::new(
@@ -279,7 +296,7 @@ mod test {
             ref_shard
                 .write()
                 .unwrap()
-                .insert_item(&b"Hello World".to_vec())
+                .insert_item(&[&b"Hello World".to_vec()])
                 .unwrap();
         });
 
@@ -288,7 +305,7 @@ mod test {
             ref_shard
                 .write()
                 .unwrap()
-                .insert_item(&b"Cats are beautiful".to_vec())
+                .insert_item(&[&b"Cats are beautiful".to_vec()])
                 .unwrap();
         });
 

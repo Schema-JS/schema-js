@@ -9,6 +9,11 @@ pub mod temp_map_shard;
 
 pub trait ShardConfig: Clone {}
 
+pub enum AvailableSpace {
+    Fixed(usize),
+    Unlimited,
+}
+
 pub trait Shard<Opts: ShardConfig> {
     fn new(path: PathBuf, opts: Opts, uuid: Option<Uuid>) -> Self;
 
@@ -81,7 +86,9 @@ pub trait Shard<Opts: ShardConfig> {
 
     fn read_item_from_index(&self, index: usize) -> Result<Vec<u8>, ShardErrors>;
 
-    fn insert_item(&self, data: &[u8]) -> Result<u64, ShardErrors>;
+    fn available_space(&self) -> AvailableSpace;
+
+    fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors>;
 
     fn get_id(&self) -> String;
 }

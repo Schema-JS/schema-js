@@ -1,5 +1,5 @@
 use crate::errors::ShardErrors;
-use crate::shard::{Shard, ShardConfig};
+use crate::shard::{AvailableSpace, Shard, ShardConfig};
 use crate::utils::fs::list_files_with_prefix;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -100,10 +100,12 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
         None
     }
 
-    pub fn insert_row(&mut self, data: &[u8]) -> usize {
-        let curr_master_has_space = self.current_master_shard.has_space();
+    pub fn insert_rows(&mut self, data: &[&[u8]]) -> usize {
+        self.raw_insert_rows(data, false)
+    }
 
-        if !curr_master_has_space {
+    pub fn raw_insert_rows(&mut self, data: &[&[u8]], create_new_shard: bool) -> usize {
+        if create_new_shard {
             let (shard_number, _, _) =
                 Self::extract_shard_signature(self.current_master_shard.get_path().clone())
                     .unwrap();
@@ -130,8 +132,23 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
             }
         }
 
-        {
-            let local_index = self.current_master_shard.insert_item(data).unwrap();
+        let available_space_in_master = self.current_master_shard.available_space();
+
+        if let AvailableSpace::Fixed(size) = available_space_in_master {
+            if size == 0 {
+                return self.raw_insert_rows(data, true);
+            }
+        }
+
+        let up_to = match available_space_in_master {
+            AvailableSpace::Fixed(size) => std::cmp::min(size, data.len()),
+            AvailableSpace::Unlimited => data.len(),
+        };
+
+        let insert_data = &data[0..up_to];
+
+        let items_pos = {
+            let local_index = self.current_master_shard.insert_item(insert_data).unwrap();
             let breaking_point = self.breaking_point();
             match breaking_point {
                 None => local_index as usize,
@@ -142,6 +159,15 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
                     curr_items + local_index as usize
                 }
             }
+        };
+
+        if data.len() > up_to {
+            // Some data didn't fit, insert remaining data into a new shard
+            let remaining_data = &data[up_to..];
+            let remaining_index = self.raw_insert_rows(remaining_data, true);
+            items_pos + remaining_index
+        } else {
+            items_pos
         }
     }
 
@@ -273,12 +299,12 @@ mod test {
 
         let ref_map1 = arc.clone();
         let thread1 = std::thread::spawn(move || {
-            ref_map1.write().unwrap().insert_row(b"1".to_vec());
+            ref_map1.write().unwrap().insert_rows(&[&b"1".to_vec()]);
         });
 
         let ref_map1 = arc.clone();
         let thread2 = std::thread::spawn(move || {
-            ref_map1.write().unwrap().insert_row(b"2".to_vec());
+            ref_map1.write().unwrap().insert_rows(&[&b"2".to_vec()]);
         });
 
         thread1.join().unwrap();
@@ -325,10 +351,12 @@ mod test {
             },
         );
 
-        context.insert_row(b"1".to_vec());
-        context.insert_row(b"2".to_vec());
-        context.insert_row(b"3".to_vec());
-        context.insert_row(b"4".to_vec());
+        context.insert_rows(&[
+            &b"1".to_vec(),
+            &b"2".to_vec(),
+            &b"3".to_vec(),
+            &b"4".to_vec(),
+        ]);
 
         context.get_element(3).unwrap();
     }

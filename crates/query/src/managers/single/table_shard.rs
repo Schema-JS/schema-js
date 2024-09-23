@@ -4,13 +4,16 @@ use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
 use schemajs_data::shard::shards::data_shard::shard::DataShard;
 use schemajs_data::shard::temp_collection::TempCollection;
+use schemajs_data::shard::temp_map_shard::DataWithIndex;
 use schemajs_dirs::create_schema_js_table;
 use schemajs_index::composite_key::CompositeKey;
 use schemajs_index::implementations::hash::hash_index::HashIndex;
+use schemajs_index::index_keys::IndexKeyType;
 use schemajs_index::index_type::{IndexType, IndexTypeValue};
 use schemajs_index::types::{Index, IndexKey};
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::table::Table;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -128,9 +131,8 @@ impl<T: Row<T>> TableShard<T> {
             temp_shard
                 .write()
                 .unwrap()
-                .set_on_reconcile(Box::new(move |row, pos| {
-                    let row: T = T::from(row);
-                    Self::insert_indexes(table.clone(), indexes.clone(), &row, pos);
+                .set_on_reconcile(Box::new(move |rows| {
+                    Self::insert_indexes(table.clone(), indexes.clone(), rows);
                     Ok(())
                 }))
         }
@@ -141,35 +143,54 @@ impl<T: Row<T>> TableShard<T> {
     pub fn insert_indexes(
         table: Arc<Table>,
         indexes: Arc<CHashMap<String, IndexTypeValue>>,
-        data: &T,
-        pos_index: usize,
+        data: Vec<DataWithIndex>,
     ) {
-        for index in &table.indexes {
-            let mut can_index = false;
-            let mut composite_key_vals: Vec<(String, String)> = vec![];
+        let mut index_ordered_items: HashMap<String, Vec<(IndexKeyType, u64)>> = HashMap::new();
 
-            // Loop over each column in the index
-            for index_col in &index.members {
-                let val = data
-                    .get_value(table.get_column(index_col).unwrap())
-                    .unwrap_or(DataValue::Null);
+        for row in data {
+            let row_t = T::from(&row.data);
+            for index in &table.indexes {
+                let mut can_index = false;
+                let mut composite_key_vals: Vec<(String, String)> = vec![];
 
-                if !val.is_null() {
-                    can_index = true;
+                for index_col in &index.members {
+                    let val = row_t
+                        .get_value(table.get_column(index_col).unwrap())
+                        .unwrap_or(DataValue::Null);
+
+                    if !val.is_null() {
+                        can_index = true;
+                    }
+
+                    composite_key_vals.push((index_col.clone(), val.to_string()))
                 }
 
-                composite_key_vals.push((index_col.clone(), val.to_string()))
+                if can_index {
+                    let real_indx = indexes.get(&index.name).unwrap();
+                    let composite_key = CompositeKey(composite_key_vals);
+                    let indx = real_indx.as_index();
+                    let key = indx.to_key(composite_key);
+                    let insertion_value = (key, row.index);
+
+                    let index_exists = index_ordered_items.contains_key(&index.name);
+
+                    if index_exists {
+                        index_ordered_items
+                            .get_mut(&index.name)
+                            .unwrap()
+                            .push(insertion_value);
+                    } else {
+                        index_ordered_items.insert(index.name.clone(), vec![insertion_value]);
+                    }
+                }
             }
+        }
 
-            if can_index {
-                let index = indexes.get_mut(&(index.name.clone())).unwrap();
+        for (index, rows) in index_ordered_items {
+            let index = indexes.get_mut(&index).unwrap();
+            let indx = index.as_index();
 
-                let composite_key = CompositeKey(composite_key_vals);
-                let indx = index.as_index();
-                let key = indx.to_key(composite_key);
-
-                indx.insert(key, pos_index as u64)
-            }
+            indx.bulk_insert(rows);
         }
     }
 }

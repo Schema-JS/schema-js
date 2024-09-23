@@ -13,6 +13,8 @@ pub trait IndexValue: From<Vec<u8>> + Into<Vec<u8>> + Clone + From<IndexDataUnit
 pub trait Index: Debug {
     fn to_key(&self, key: CompositeKey) -> IndexKeyType;
 
+    fn bulk_insert(&self, data: Vec<(IndexKeyType, u64)>);
+
     fn insert(&self, key: IndexKeyType, row_position: u64);
 
     fn get(&self, key: &IndexKeyType) -> Option<u64>;

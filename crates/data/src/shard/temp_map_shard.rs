@@ -7,8 +7,13 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
+pub struct DataWithIndex {
+    pub data: Vec<u8>,
+    pub index: u64,
+}
+
 pub struct OnReconcileCb {
-    func: Option<Box<dyn Fn(&[u8], usize) -> Result<(), ()> + Send + Sync + 'static>>,
+    func: Option<Box<dyn Fn(Vec<DataWithIndex>) -> Result<(), ()> + Send + Sync + 'static>>,
 }
 
 impl Debug for OnReconcileCb {
@@ -48,7 +53,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
 
     pub fn set_on_reconcile(
         &mut self,
-        data: Box<dyn Fn(&[u8], usize) -> Result<(), ()> + Send + Sync + 'static>,
+        data: Box<dyn Fn(Vec<DataWithIndex>) -> Result<(), ()> + Send + Sync + 'static>,
     ) {
         self.on_reconcile = OnReconcileCb { func: Some(data) };
     }
@@ -79,7 +84,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
             self.temp_shards
                 .get(shard_index)
                 .ok_or(ShardErrors::UnknownShard)?
-                .insert_item(data)
+                .insert_item(&[data])
         }
     }
 
@@ -97,23 +102,26 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
     }
 
     // Maybe async?
-    fn call_on_reconcile(&self, data: &Vec<u8>, pos: usize) -> Result<(), ()> {
+    fn call_on_reconcile(&self, data: Vec<DataWithIndex>) -> Result<(), ()> {
         match &self.on_reconcile.func {
             None => Ok(()),
-            Some(cb) => cb(data, pos),
+            Some(cb) => cb(data),
         }
     }
 
     fn reconcile(&self, from: &S, target: &mut MapShard<S, Opts>) {
         let (shard, indexes) = Self::get_reconciliation_data(from);
-        let now = std::time::Instant::now();
+        let mut reconciling_items = vec![];
+        // TODO: What if the row is inserted `target.insert_rows` but, the reconciling (call_on_reconcile) fails?
         for item_index in indexes {
             let binary_item = shard.read_item_from_index(item_index as usize).unwrap();
-            let pos = target.insert_row(&binary_item);
-            println!("pos {}", pos);
-            self.call_on_reconcile(&binary_item, pos).unwrap();
+            let pos = target.insert_rows(&[&binary_item]);
+            reconciling_items.push(DataWithIndex {
+                data: binary_item,
+                index: pos as u64,
+            });
         }
-        println!("Reconciling took {:?}", now.elapsed());
+        self.call_on_reconcile(reconciling_items).unwrap();
     }
 
     pub fn reconcile_all(&mut self) {
@@ -186,7 +194,7 @@ mod test {
         );
 
         shard
-            .insert_row("0:Hello world".as_bytes().to_vec())
+            .insert_row(&"0:Hello world".as_bytes().to_vec())
             .unwrap();
 
         let curr_shard_id = {
@@ -210,9 +218,9 @@ mod test {
             .any(|i| i.get_id() == curr_shard_id);
         assert!(does_shard_still_exist);
 
-        shard.insert_row("1:Hello Cats".as_bytes().to_vec());
+        shard.insert_row(&"1:Hello Cats".as_bytes().to_vec());
         // Should reconcile automatically because the tempshard only supports 2 items per shard.
-        shard.insert_row("2:Hello Dogs".as_bytes().to_vec());
+        shard.insert_row(&"2:Hello Dogs".as_bytes().to_vec());
 
         // If it reconciled, it doesn't exist anymore.
         let does_shard_still_exist = shard

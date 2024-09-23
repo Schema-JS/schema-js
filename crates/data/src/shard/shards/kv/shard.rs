@@ -3,7 +3,8 @@ use crate::errors::ShardErrors;
 use crate::shard::shards::kv::config::KvShardConfig;
 use crate::shard::shards::kv::shard_header::KvShardHeader;
 use crate::shard::shards::kv::util::get_element_offset;
-use crate::shard::Shard;
+use crate::shard::{AvailableSpace, Shard};
+use crate::utils::flatten;
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
@@ -110,18 +111,34 @@ impl Shard<KvShardConfig> for KvShard {
         }
     }
 
-    fn insert_item(&self, data: &[u8]) -> Result<u64, ShardErrors> {
+    fn available_space(&self) -> AvailableSpace {
+        if self.max_capacity == 0 {
+            AvailableSpace::Unlimited
+        } else {
+            let space = self.max_capacity - ((self.get_last_index() + 1) as usize);
+            AvailableSpace::Fixed(space)
+        }
+    }
+
+    fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
         let mut writer = self.data.write().unwrap();
         writer
             .operate(|file| {
-                let end_of_file = file
+                let _ = file
                     .seek(SeekFrom::End(0))
                     .expect("Failed to seek to end of file");
 
-                file.write_all(&data).expect("Failed to write item to file");
+                let flat_items = flatten(data);
+
+                file.write_all(&flat_items)
+                    .expect("Failed to write item to file");
 
                 let new_len = {
-                    let new_len = self.header.write().unwrap().increment_len(file);
+                    let new_len = self
+                        .header
+                        .write()
+                        .unwrap()
+                        .increment_len(Some(data.len() as u64), file);
                     new_len
                 };
 
@@ -160,9 +177,15 @@ mod test {
             None,
         );
 
-        kv_shard.insert_item("a".to_string().into_bytes()).unwrap();
-        kv_shard.insert_item("b".to_string().into_bytes()).unwrap();
-        kv_shard.insert_item("c".to_string().into_bytes()).unwrap();
+        kv_shard
+            .insert_item(&[
+                &"a".to_string().into_bytes(),
+                &"b".to_string().into_bytes(),
+                &"c".to_string().into_bytes(),
+            ])
+            .unwrap();
+
+        assert_eq!(kv_shard.header.read().unwrap().items_len, 3);
 
         assert_eq!(
             kv_shard.get_element(1).unwrap(),

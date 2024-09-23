@@ -229,7 +229,7 @@ mod test {
             })
             .await?;
 
-            let num_inserts = 5001;
+            let num_inserts = 10_000;
             let mut script = String::new();
 
             for i in 0..num_inserts {

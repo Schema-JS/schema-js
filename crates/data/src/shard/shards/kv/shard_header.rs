@@ -163,8 +163,8 @@ impl KvShardHeader {
         );
     }
 
-    pub fn increment_len(&mut self, file: &mut File) -> u64 {
-        self.items_len += 1;
+    pub fn increment_len(&mut self, len: Option<u64>, file: &mut File) -> u64 {
+        self.items_len += len.unwrap_or(1);
         file.write_at(&self.items_len.to_le_bytes(), U64_SIZE as u64)
             .unwrap();
 

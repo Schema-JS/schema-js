@@ -186,6 +186,14 @@ impl DataShardHeader {
         None
     }
 
+    pub fn available_space(&self) -> usize {
+        if self.last_offset_index == -1 {
+            self.max_offsets as usize
+        } else {
+            (self.max_offsets - (self.last_offset_index as u64 + 1)) as usize
+        }
+    }
+
     pub fn has_space(&self) -> bool {
         if self.last_offset_index == -1 {
             true

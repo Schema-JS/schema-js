@@ -103,18 +103,32 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         (K::from(key_unit), V::from(val_unit), el)
     }
 
-    pub fn insert(&self, key: K, value: V) {
-        let key_vec: Vec<u8> = key.into();
-        let value_vec: Vec<u8> = value.into();
+    pub fn raw_insert(&self, data: Vec<(K, V)>) {
+        let data_units: Vec<Vec<u8>> = data
+            .into_iter()
+            .map(|(k, v)| {
+                let key_vec: Vec<u8> = k.into();
+                let value_vec: Vec<u8> = v.into();
 
-        let build_entry = self.build_entry(key_vec, value_vec);
-        let entry_index_unit: Vec<u8> = build_entry.into();
+                let build_entry = self.build_entry(key_vec, value_vec);
 
-        self.data.write().unwrap().insert_row(&entry_index_unit);
+                let vec: Vec<u8> = build_entry.into();
+
+                vec
+            })
+            .collect();
+
+        let entries: Vec<&[u8]> = data_units.iter().map(|i| i.as_slice()).collect();
+
+        self.data.write().unwrap().insert_rows(&entries);
 
         if self.binary_order {
             self.keep_binary_order();
         }
+    }
+
+    pub fn insert(&self, key: K, value: V) {
+        self.raw_insert(vec![(key, value)]);
     }
 
     pub fn binary_search(&self, target: K) -> Option<(u64, K, V)> {
