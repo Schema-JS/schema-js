@@ -1,4 +1,10 @@
-<img src="/docs/logo.png" width="200" height="175">
+
+
+<p align="center">
+  <a href="#">
+    <img src="/docs/logo.png" width="300" height="262.5">
+  </a>
+</p>
 
 # `SchemaJS`
 
@@ -19,3 +25,6 @@ Leveraging JavaScript for database operations also unlocks a new level of flexib
 ## Status of the project
 
 SchemaJS is still very young and until version 1.0.0, its production usage will not be recommended. Any feedback is welcome.
+
+## License
+This project is licensed under the [MIT License](./LICENSE)
