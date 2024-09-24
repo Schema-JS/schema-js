@@ -4,3 +4,7 @@
 .idea
 ./crates/query/test_cases
 /crates/query/test_cases
+.DS_Store
+/**/.DS_Store
+/.DS_Store
+.DS_Store?
