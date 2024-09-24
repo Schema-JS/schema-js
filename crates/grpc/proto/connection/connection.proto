@@ -1,0 +1,23 @@
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+package sjs.connection;
+
+service ProtoConnectionService {
+    rpc CheckConnection(CheckConnectionRequest) returns (CheckConnectionResponse) {}
+}
+
+// Request message for checking the connection
+message CheckConnectionRequest {
+    // The database name or identifier (required)
+    string database = 1;
+
+    // The username for authentication (required)
+    string username = 2;
+
+    // The password for authentication (required)
+    string password = 3;
+}
+
+message CheckConnectionResponse {
+    bool is_connected = 1;
+}
