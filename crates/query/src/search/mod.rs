@@ -1,1 +1,1 @@
-mod search_manager;
+pub mod search_manager;

@@ -13,7 +13,6 @@ pub fn create_scheme_js_folder(base_path: Option<PathBuf>) {
     .into_iter();
 
     for path in paths {
-        println!("{}", path.to_str().unwrap());
         if !path.exists() {
             std::fs::create_dir(path).unwrap();
         }

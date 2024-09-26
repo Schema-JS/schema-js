@@ -1,0 +1,17 @@
+[package]
+name = "schemajs_grpc"
+version = "0.1.0"
+authors = ["Andres Pirela <andreespirela@outlook.com>"]
+edition = "2021"
+resolver = "2"
+description = "We'll take care of this later"
+license = "MIT"
+
+[dependencies]
+tonic.workspace = true
+prost.workspace = true
+tonic-async-interceptor.workspace = true
+schemajs_internal = { path = "../internal" }
+
+[build-dependencies]
+tonic-build = "0.12.2"

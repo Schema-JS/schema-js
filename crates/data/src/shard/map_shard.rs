@@ -154,7 +154,6 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
                 None => local_index as usize,
                 Some(breaking_point) => {
                     let reader = self.past_master_shards.read().unwrap();
-                    println!("{}", reader.len());
                     let curr_items = reader.len() * breaking_point as usize;
                     curr_items + local_index as usize
                 }

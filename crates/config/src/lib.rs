@@ -8,8 +8,27 @@ pub struct SchemeJsWorkspace {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SchemeJsDefault {
+    pub scheme_name: String,
+    pub username: String,
+    pub password: String,
+}
+
+impl Default for SchemeJsDefault {
+    fn default() -> Self {
+        SchemeJsDefault {
+            scheme_name: "public".to_string(),
+            username: "admin".to_string(),
+            password: "admin".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SchemeJsConfig {
     pub workspace: SchemeJsWorkspace,
+    pub default: Option<SchemeJsDefault>,
 }
 
 impl SchemeJsConfig {

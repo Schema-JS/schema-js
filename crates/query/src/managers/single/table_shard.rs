@@ -64,6 +64,7 @@ impl<T: Row<T>> TableShard<T> {
         temp_config: TempDataShardConfig,
     ) -> Self {
         let table_path = create_schema_js_table(base_path, scheme, table.name.as_str());
+        println!("{:?}", table_path);
 
         let map_shard = MapShard::new(
             table_path.clone(),
@@ -92,6 +93,8 @@ impl<T: Row<T>> TableShard<T> {
             if !path.exists() {
                 std::fs::create_dir(path.clone()).unwrap();
             }
+
+            println!("Creating index {:?} {}", path.clone(), index.name);
 
             let index_obj = match index.index_type {
                 IndexType::Hash => IndexTypeValue::Hash(HashIndex::new_from_path(

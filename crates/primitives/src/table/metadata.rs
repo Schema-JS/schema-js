@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TableMetadata {
     pub module_id: Option<ModuleId>,
+    pub internal: bool,
 }
 
 impl TableMetadata {

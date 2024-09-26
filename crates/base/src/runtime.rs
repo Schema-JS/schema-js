@@ -8,6 +8,8 @@ use deno_core::{
 };
 use schemajs_config::SchemeJsConfig;
 use schemajs_engine::engine::SchemeJsEngine;
+use schemajs_internal::get_internal_tables;
+use schemajs_internal::manager::InternalManager;
 use schemajs_module_loader::ts_module_loader::TypescriptModuleLoader;
 use schemajs_primitives::database::Database;
 use schemajs_primitives::table::Table;
@@ -25,7 +27,8 @@ pub struct SchemeJsRuntime {
     pub config_file: PathBuf,
     pub data_path_folder: Option<PathBuf>,
     pub current_folder: PathBuf,
-    pub engine: Arc<SchemeJsEngine>,
+    pub engine: Arc<RwLock<SchemeJsEngine>>,
+    pub internal_manager: Arc<InternalManager>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,7 +58,7 @@ impl SchemeJsRuntime {
             (folder_path.clone(), base_path)
         };
 
-        let config = SchemeJsConfig::new(config_file.clone())?;
+        let config = Arc::new(SchemeJsConfig::new(config_file.clone())?);
 
         let extensions: Vec<Extension> = vec![
             schemajs_primitives::sjs_primitives::init_ops(),
@@ -83,19 +86,24 @@ impl SchemeJsRuntime {
                 .expect("Failed to execute bootstrap script");
         }
 
-        let config_opts = WorkerRuntimeOpts::Main(MainWorkerRuntimeOpts { config });
-        let mut engine = SchemeJsEngine::new(data_path.clone());
+        let config_opts = WorkerRuntimeOpts::Main(MainWorkerRuntimeOpts {
+            config: config.clone(),
+        });
+        let mut engine = SchemeJsEngine::new(data_path.clone(), config);
         Self::load(&config_opts, &mut js_runtime, &folder_path, &mut engine)
             .await
             .unwrap();
 
-        let engine = Arc::new(engine);
+        let engine = Arc::new(RwLock::new(engine));
         {
             // Put reference to engine
             let op_state_rc = js_runtime.op_state();
             let mut op_state = op_state_rc.borrow_mut();
-            op_state.put::<Arc<SchemeJsEngine>>(engine.clone());
+            op_state.put::<Arc<RwLock<SchemeJsEngine>>>(engine.clone());
         }
+
+        let mut internal_manager = Arc::new(InternalManager::new(engine.clone()));
+        internal_manager.init();
 
         Ok(Self {
             js_runtime,
@@ -104,6 +112,7 @@ impl SchemeJsRuntime {
             current_folder: folder_path,
             engine,
             data_path_folder: data_path.clone(),
+            internal_manager,
         })
     }
 
