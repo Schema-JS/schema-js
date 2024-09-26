@@ -1,6 +1,6 @@
 pub mod errors;
 pub mod managers;
-mod ops;
+pub mod ops;
 pub mod row;
 pub mod row_json;
 mod search;

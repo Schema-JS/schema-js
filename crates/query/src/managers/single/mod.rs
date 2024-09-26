@@ -3,10 +3,14 @@ pub mod table_shard;
 use crate::errors::QueryError;
 use crate::managers::single::table_shard::TableShard;
 use crate::row::Row;
+use crate::search::search_manager::QuerySearchManager;
 use chashmap::CHashMap;
 use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
+use schemajs_data::shard::temp_map_shard::DataWithIndex;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
+use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::table::Table;
+use serde_json::Value;
 use std::hash::Hash;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
@@ -28,6 +32,8 @@ pub struct SingleQueryManager<T: Row<T>> {
     // A unique identifier for this instance of SingleQueryManager.
     // This UUID helps in distinguishing different query managers in the system.
     pub id: Uuid,
+
+    pub search_manager: QuerySearchManager<T>,
 }
 
 /// `SingleQueryManager` is responsible for managing all query-related operations
@@ -59,12 +65,14 @@ impl<T: Row<T>> SingleQueryManager<T> {
     /// ```
     pub fn new(scheme: String) -> Self {
         let uuid = Uuid::new_v4();
+        let tables = Arc::new(CHashMap::default());
 
         SingleQueryManager {
             table_names: RwLock::new(vec![]),
-            tables: Arc::new(CHashMap::default()),
+            tables: tables.clone(),
             scheme,
             id: uuid,
+            search_manager: QuerySearchManager::new(tables),
         }
     }
 
@@ -130,21 +138,43 @@ impl<T: Row<T>> SingleQueryManager<T> {
     /// `SingleQueryManager` will require a folder to be created for `database-name` otherwise it will panic.
     /// For a reference on how this is plugged: crates/query/src/search/search_manager.rs#test_search_manager
     pub fn insert(&self, row: T) -> Result<Uuid, QueryError> {
+        self.raw_insert(row, false)
+    }
+
+    pub fn raw_insert(&self, mut row: T, master_insert: bool) -> Result<Uuid, QueryError> {
         let table_name = row.get_table_name();
         let table = self.tables.get(&table_name);
 
-        // TODO: Config to generate an UUID if not present
-
         if let Some(table_shard) = table {
+            let uuid_col = Table::get_internal_uid();
             let uuid = row
-                .get_value(&Table::get_internal_uid())
-                .ok_or(QueryError::UnknownUid)?;
+                .get_value(&uuid_col)
+                .unwrap_or_else(|| DataValue::Uuid(Uuid::new_v4()));
+
+            row.set_value(&uuid_col, Value::String(uuid.to_string()));
 
             let serialized_value = row
                 .serialize()
                 .map_err(|e| QueryError::InvalidSerialization)?;
 
-            table_shard.temps.insert(&serialized_value)?;
+            if !master_insert {
+                table_shard.temps.insert(&serialized_value)?;
+            } else {
+                let pointer = table_shard
+                    .data
+                    .write()
+                    .unwrap()
+                    .insert_rows(&[&serialized_value]);
+
+                TableShard::<T>::insert_indexes(
+                    table_shard.table.clone(),
+                    table_shard.indexes.clone(),
+                    vec![DataWithIndex {
+                        data: serialized_value,
+                        index: pointer as u64,
+                    }],
+                );
+            }
 
             Ok(uuid.as_uuid().unwrap().clone())
         } else {

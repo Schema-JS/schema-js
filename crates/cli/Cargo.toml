@@ -12,3 +12,5 @@ path = "src/main.rs"
 base = { version = "0.1.0", path = "../base" }
 tokio.workspace = true
 anyhow.workspace = true
+clap.workspace = true
+schemajs_grpc = { version = "0.1.0", path = "../grpc" }

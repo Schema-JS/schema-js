@@ -11,6 +11,7 @@ pub struct Column {
     pub required: bool,
     pub comment: Option<String>,
     pub primary_key: bool,
+    pub default_index: Option<bool>,
 }
 
 impl Column {
@@ -22,6 +23,7 @@ impl Column {
             comment: None,
             required: false,
             primary_key: false,
+            default_index: Some(true),
         }
     }
 
@@ -42,6 +44,11 @@ impl Column {
 
     pub fn set_comment(mut self, comment: &str) -> Self {
         self.comment = Some(comment.to_string());
+        self
+    }
+
+    pub fn set_default_index(mut self, default_index: bool) -> Self {
+        self.default_index = Some(default_index);
         self
     }
 }

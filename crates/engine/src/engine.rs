@@ -1,25 +1,29 @@
 use crate::engine_db::EngineDb;
 use crate::utils::fs::is_js_or_ts;
 use anyhow::bail;
-use deno_core::{ModuleId, ModuleSpecifier};
+use deno_core::ModuleSpecifier;
+use schemajs_config::SchemeJsConfig;
 use schemajs_dirs::create_scheme_js_folder;
 use schemajs_primitives::table::Table;
 use std::future::Future;
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use walkdir::WalkDir;
 
 pub struct SchemeJsEngine {
     pub databases: Vec<EngineDb>,
     pub data_path_dir: Option<PathBuf>,
+    pub config: Arc<SchemeJsConfig>,
 }
 
 impl SchemeJsEngine {
-    pub fn new(data_path: Option<PathBuf>) -> Self {
+    pub fn new(data_path: Option<PathBuf>, config: Arc<SchemeJsConfig>) -> Self {
         create_scheme_js_folder(data_path.clone());
 
         Self {
             databases: vec![],
             data_path_dir: data_path,
+            config,
         }
     }
 

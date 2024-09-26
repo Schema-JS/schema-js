@@ -110,8 +110,6 @@ impl KvShardHeader {
                     buffer.extend_from_slice(&id_bytes);
                 }
 
-                println!("{:?}", buffer);
-
                 // Write the buffer to the file
                 file.write_all(&buffer)
                     .expect("Failed to write Index header");
@@ -153,14 +151,6 @@ impl KvShardHeader {
             let id_bytes = id_bytes.try_into().unwrap();
             self.id = Uuid::from_bytes_le(id_bytes);
         }
-
-        println!(
-            "{} {} {} {}",
-            self.max_capacity.unwrap(),
-            self.items_len,
-            self.value_size,
-            self.id.to_string()
-        );
     }
 
     pub fn increment_len(&mut self, len: Option<u64>, file: &mut File) -> u64 {

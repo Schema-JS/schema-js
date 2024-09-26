@@ -16,10 +16,13 @@ pub async fn op_engine_insert_row(
     #[serde] mut row: serde_json::Value,
 ) -> Result<Uuid, QueryError> {
     let mut mut_state = state.borrow_mut();
-    let state = mut_state.borrow_mut::<Arc<SchemeJsEngine>>().clone();
+    let state = mut_state
+        .borrow_mut::<Arc<RwLock<SchemeJsEngine>>>()
+        .clone();
 
     let query_manager = {
-        let db = state.find_by_name_ref(db_name.clone()).unwrap();
+        let read_engine = state.read().unwrap();
+        let db = read_engine.find_by_name_ref(db_name.clone()).unwrap();
         db.query_manager.clone()
     };
 

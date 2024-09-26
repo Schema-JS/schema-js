@@ -9,3 +9,9 @@ license = "MIT"
 
 [dependencies]
 schemajs_primitives = { version = "0.1.0", path = "../primitives" }
+serde.workspace = true
+schemajs_engine = { path = "../engine" }
+schemajs_query = { path = "../query" }
+schemajs_config = { path = "../config" }
+serde_json.workspace = true
+bcrypt.workspace = true

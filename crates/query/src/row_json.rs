@@ -4,6 +4,7 @@ use crate::serializer::RowSerializationError;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::column::Column;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fmt::{Debug, Formatter};
 
 /// `RowData` represents the core structure for storing a row's data in a JSON format.
@@ -78,6 +79,15 @@ impl Row<RowJson> for RowJson {
         match potential_val {
             None => return None,
             Some(val) => Some(DataValue::from((column, val))),
+        }
+    }
+
+    // TODO: Use DataValue instead of `Value`
+    fn set_value(&mut self, column: &Column, value: Value) {
+        // Check if the Value is an object
+        if let serde_json::Value::Object(ref mut obj) = self.value.value {
+            // Insert a new field
+            obj.insert(column.name.to_string(), value);
         }
     }
 

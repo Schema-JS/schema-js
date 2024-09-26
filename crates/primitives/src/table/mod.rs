@@ -64,7 +64,20 @@ impl Table {
             }
         }
 
+        if column.default_index.unwrap() {
+            self.indexes.push(Index {
+                name: format!("{}_indx", &column.name),
+                members: vec![column.name.to_string()],
+                index_type: IndexType::Hash,
+            });
+        }
+
         self.columns.insert(column.name.clone(), column);
+        self
+    }
+
+    pub fn set_internal(mut self, internal: bool) -> Self {
+        self.metadata.internal = internal;
         self
     }
 

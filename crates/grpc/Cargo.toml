@@ -11,7 +11,7 @@ license = "MIT"
 tonic.workspace = true
 prost.workspace = true
 tonic-async-interceptor.workspace = true
-schemajs_engine = { path = "../engine" }
+schemajs_internal = { path = "../internal" }
 
 [build-dependencies]
 tonic-build = "0.12.2"

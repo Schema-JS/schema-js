@@ -8,6 +8,7 @@ use schemajs_primitives::index::Index;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+#[derive(Debug)]
 pub struct QuerySearchManager<T: Row<T>> {
     table_shards: Arc<CHashMap<String, TableShard<T>>>,
 }

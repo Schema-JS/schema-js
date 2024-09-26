@@ -72,6 +72,8 @@ flaky_test = "0.2.2"
 tonic = "0.12.2"
 prost = "0.13.3"
 tonic-async-interceptor = "0.12.0"
+bcrypt = "0.15.1"
+clap = { version = "4.5.18", features = ["cargo", "string", "env", "derive"] }
 
 [profile.dind]
 inherits = "dev"
