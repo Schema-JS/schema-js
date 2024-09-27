@@ -162,6 +162,8 @@ impl DataShardHeader {
                     let offset_bytes = value.to_le_bytes();
                     file.write_at(&offset_bytes, pos as u64)
                         .expect("Failed to write offset to file");
+                    file.write_at(&available_index.to_le_bytes(), U64_SIZE as u64)
+                        .map_err(|e| ShardErrors::ErrorAddingHeaderOffset)?;
                     self.last_offset_index = available_index as i64;
                     Ok(())
                 }
@@ -224,9 +226,14 @@ impl DataShardHeader {
             Err(_) => return None,
         };
 
-        // Convert the byte array to u64
         let val = u64::from_le_bytes(arr);
-        Some(val)
+
+        if offset > Self::calculate_offset_pos(0) && val <= 0 {
+            None
+        } else {
+            // Convert the byte array to u64
+            Some(val)
+        }
     }
 
     pub fn get_offset_pos_by_index(&self, index: usize) -> Option<usize> {

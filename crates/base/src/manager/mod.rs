@@ -5,19 +5,19 @@ use crate::manager::task::Task;
 use crate::manager::task_duration::TaskDuration;
 use schemajs_engine::engine::SchemeJsEngine;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
 pub struct SchemeJsManager {
-    runtime: Arc<SchemeJsEngine>,
+    runtime: Arc<RwLock<SchemeJsEngine>>,
     running: Arc<AtomicBool>,
     tasks: Vec<Task>,
     cancellation_token: CancellationToken,
 }
 
 impl SchemeJsManager {
-    pub fn new(runtime: Arc<SchemeJsEngine>) -> Self {
+    pub fn new(runtime: Arc<RwLock<SchemeJsEngine>>) -> Self {
         Self {
             runtime,
             running: Arc::new(AtomicBool::new(true)),
@@ -54,7 +54,7 @@ impl SchemeJsManager {
         }
     }
 
-    async fn run_task(task: Task, engine: Arc<SchemeJsEngine>, running: Arc<AtomicBool>) {
+    async fn run_task(task: Task, engine: Arc<RwLock<SchemeJsEngine>>, running: Arc<AtomicBool>) {
         match task.duration {
             TaskDuration::Defined(dur) => {
                 let mut interval = tokio::time::interval(dur);

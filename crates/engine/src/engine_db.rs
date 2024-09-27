@@ -14,12 +14,15 @@ pub struct EngineDb {
 
 impl EngineDb {
     pub fn new(base_path: Option<PathBuf>, name: &str) -> Self {
-        let db_folder = create_scheme_js_db(base_path, name);
+        let db_folder = create_scheme_js_db(base_path.clone(), name);
+
+        let mut query_manager = SingleQueryManager::new(name.to_string());
+        query_manager.data_path = base_path.clone();
 
         EngineDb {
             name: name.to_string(),
             db_folder,
-            query_manager: Arc::new(SingleQueryManager::new(name.to_string())),
+            query_manager: Arc::new(query_manager),
         }
     }
 

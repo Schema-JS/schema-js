@@ -2,3 +2,5 @@
 databases = [
     "./public"
 ]
+
+[default]

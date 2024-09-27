@@ -11,6 +11,7 @@ use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::table::Table;
 use std::hash::Hash;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
@@ -33,6 +34,8 @@ pub struct SingleQueryManager<T: Row<T>> {
     pub id: Uuid,
 
     pub search_manager: QuerySearchManager<T>,
+
+    pub data_path: Option<PathBuf>,
 }
 
 /// `SingleQueryManager` is responsible for managing all query-related operations
@@ -72,6 +75,7 @@ impl<T: Row<T>> SingleQueryManager<T> {
             scheme,
             id: uuid,
             search_manager: QuerySearchManager::new(tables),
+            data_path: None,
         }
     }
 
@@ -97,7 +101,7 @@ impl<T: Row<T>> SingleQueryManager<T> {
             table.name.clone(),
             TableShard::<T>::new(
                 table,
-                None,
+                self.data_path.clone(),
                 self.scheme.as_str(),
                 TempDataShardConfig {
                     max_offsets: TempOffsetTypes::Custom(Some(1000)),

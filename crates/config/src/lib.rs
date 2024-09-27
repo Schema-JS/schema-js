@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SchemeJsWorkspace {
     pub databases: Vec<String>,
 }
@@ -25,7 +25,8 @@ impl Default for SchemeJsDefault {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct SchemeJsConfig {
     pub workspace: SchemeJsWorkspace,
     pub default: Option<SchemeJsDefault>,

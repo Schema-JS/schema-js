@@ -4,7 +4,8 @@ use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, RwLock};
 use tokio_util::sync::CancellationToken;
 
-pub type TaskSignature = Box<dyn Fn(Arc<SchemeJsEngine>) -> Result<(), ()> + Send + Sync + 'static>;
+pub type TaskSignature =
+    Box<dyn Fn(Arc<RwLock<SchemeJsEngine>>) -> Result<(), ()> + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct TaskCallback {

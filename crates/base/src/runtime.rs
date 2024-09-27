@@ -265,6 +265,75 @@ mod test {
     }
 
     #[tokio::test]
+    pub async fn test_runtime_insert_file_persistence() -> anyhow::Result<()> {
+        let data_path = std::env::current_dir()
+            .unwrap()
+            .join(PathBuf::from("./test_cases/data"));
+        let now = std::time::Instant::now();
+
+        for _ in 0..2 {
+            {
+                let mut create_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
+                    config_path: PathBuf::from("./test_cases/default-db"),
+                    data_path: Some(data_path.clone()),
+                })
+                .await?;
+
+                let num_inserts = 5001;
+                let mut script = String::new();
+
+                for i in 0..num_inserts {
+                    script.push_str(&format!(
+                        r#"globalThis.SchemeJS.insert("{}", "{}", {});"#,
+                        "public",
+                        "users",
+                        serde_json::json!({
+                            "id": "ABCD"
+                        })
+                        .to_string()
+                    ));
+                }
+                create_rt
+                    .js_runtime
+                    .execute_script(located_script_name!(), script)?;
+            }
+        }
+
+        let elapsed = now.elapsed();
+        println!("Elapsed: {:.5?}", elapsed);
+
+        let mut last_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
+            config_path: PathBuf::from("./test_cases/default-db"),
+            data_path: Some(data_path.clone()),
+        })
+        .await?;
+
+        let val = {
+            let reader = last_rt.engine.read().unwrap();
+            let db = reader.find_by_name_ref("public".to_string()).unwrap();
+            let table = db.query_manager.tables.get("users").unwrap();
+            let table_read = table.data.read().unwrap();
+            let header_reader = table_read.current_master_shard.header.read().unwrap();
+            println!("{}", header_reader.get_next_available_index().unwrap());
+            println!("{}", header_reader.get_last_offset_index());
+
+            (
+                header_reader.get_last_offset_index(),
+                header_reader.get_next_available_index().unwrap(),
+                table_read.get_element(2000).is_err(),
+            )
+        };
+
+        std::fs::remove_dir_all(data_path).unwrap();
+
+        assert_eq!(val.0, 1999);
+        assert_eq!(val.1, 2000);
+        assert!(val.2);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     pub async fn test_runtime_insert_with_manager() -> anyhow::Result<()> {
         let data_path = std::env::current_dir()
             .unwrap()
@@ -283,8 +352,9 @@ mod test {
             manager.add_task(Task::new(
                 "1".to_string(),
                 Box::new(move |rt| {
-                    for x in rt.databases.iter() {
-                        let query_manager = &x.query_manager;
+                    let engine = rt.write().unwrap();
+                    for db in engine.databases.iter() {
+                        let query_manager = &db.query_manager;
                         for table in query_manager.table_names.read().unwrap().iter() {
                             let table = query_manager.tables.get(table).unwrap();
                             table.temps.reconcile_all();
@@ -324,6 +394,8 @@ mod test {
 
             println!("Executed");
         }
+
+        std::fs::remove_dir_all(data_path).unwrap();
 
         Ok(())
     }
