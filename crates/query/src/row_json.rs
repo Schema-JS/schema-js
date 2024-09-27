@@ -83,11 +83,11 @@ impl Row<RowJson> for RowJson {
     }
 
     // TODO: Use DataValue instead of `Value`
-    fn set_value(&mut self, column: &Column, value: Value) {
+    fn set_value(&mut self, column: &Column, value: DataValue) {
         // Check if the Value is an object
         if let serde_json::Value::Object(ref mut obj) = self.value.value {
             // Insert a new field
-            obj.insert(column.name.to_string(), value);
+            obj.insert(column.name.to_string(), value.to_value());
         }
     }
 

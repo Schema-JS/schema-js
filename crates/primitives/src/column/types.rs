@@ -36,6 +36,16 @@ impl DataValue {
         }
     }
 
+    pub fn to_value(&self) -> Value {
+        match self {
+            DataValue::Null => Value::Null,
+            DataValue::String(s) => Value::String(s.clone()),
+            DataValue::Boolean(b) => Value::Bool(b.clone()),
+            DataValue::Number(n) => Value::Number(n.clone()),
+            DataValue::Uuid(val) => Value::String(val.to_string()),
+        }
+    }
+
     pub fn to_string(&self) -> String {
         match self {
             DataValue::Null => String::from("0"),

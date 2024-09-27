@@ -10,7 +10,6 @@ use schemajs_data::shard::temp_map_shard::DataWithIndex;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::table::Table;
-use serde_json::Value;
 use std::hash::Hash;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
@@ -151,7 +150,7 @@ impl<T: Row<T>> SingleQueryManager<T> {
                 .get_value(&uuid_col)
                 .unwrap_or_else(|| DataValue::Uuid(Uuid::new_v4()));
 
-            row.set_value(&uuid_col, Value::String(uuid.to_string()));
+            row.set_value(&uuid_col, uuid.clone());
 
             let serialized_value = row
                 .serialize()

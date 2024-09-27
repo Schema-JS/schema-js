@@ -49,7 +49,6 @@ impl Table {
         }
     }
 
-    // TODO: Handle known index
     pub fn add_index(mut self, index: Index) -> Self {
         self.indexes.push(index);
         self
@@ -57,11 +56,7 @@ impl Table {
 
     pub fn add_column(mut self, column: Column) -> Self {
         if column.primary_key {
-            if self.primary_key == "_uid".to_string() {
-                self.primary_key = column.name.clone();
-            } else {
-                todo!("Handle");
-            }
+            self.primary_key = column.name.clone();
         }
 
         if column.default_index.unwrap() {

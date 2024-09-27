@@ -1,7 +1,6 @@
 use crate::serializer::RowSerializer;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::column::Column;
-use serde_json::Value;
 use std::hash::Hash;
 
 /// The `Row` trait defines the core operations that any row in the database must implement.
@@ -24,7 +23,7 @@ pub trait Row<T>: RowSerializer<T> + for<'a> From<&'a [u8]> {
     /// - `Option<DataValue>`: The value of the column, if present. If the value is not found, it returns `None`.
     fn get_value(&self, column: &Column) -> Option<DataValue>;
 
-    fn set_value(&mut self, column: &Column, value: Value);
+    fn set_value(&mut self, column: &Column, value: DataValue);
 
     /// Returns the name of the table to which the row belongs.
     ///
