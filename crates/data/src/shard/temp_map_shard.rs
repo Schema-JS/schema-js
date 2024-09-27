@@ -165,12 +165,14 @@ mod test {
     use crate::temp_offset_types::TempOffsetTypes;
     use std::path::PathBuf;
     use std::sync::{Arc, RwLock};
+    use uuid::Uuid;
 
     #[tokio::test]
     pub async fn test_temp_shard() {
+        let data_path = format!("./test_cases/data/{}", Uuid::new_v4().to_string());
         let data_path = std::env::current_dir()
             .unwrap()
-            .join(PathBuf::from("./test_cases/data"));
+            .join(PathBuf::from(data_path.as_str()));
 
         if !data_path.exists() {
             std::fs::create_dir(data_path.clone().clone()).unwrap();
@@ -218,9 +220,13 @@ mod test {
             .any(|i| i.get_id() == curr_shard_id);
         assert!(does_shard_still_exist);
 
-        shard.insert_row(&"1:Hello Cats".as_bytes().to_vec());
+        shard
+            .insert_row(&"1:Hello Cats".as_bytes().to_vec())
+            .unwrap();
         // Should reconcile automatically because the tempshard only supports 2 items per shard.
-        shard.insert_row(&"2:Hello Dogs".as_bytes().to_vec());
+        let a = shard
+            .insert_row(&"2:Hello Dogs".as_bytes().to_vec())
+            .unwrap();
 
         // If it reconciled, it doesn't exist anymore.
         let does_shard_still_exist = shard
@@ -231,12 +237,9 @@ mod test {
 
         // There should still be a shard available which should contain "2:Hello Dogs". This one hasn't been reconciled yet.
         assert_eq!(shard.temp_shards.len(), 1);
-        let item = shard
-            .temp_shards
-            .first()
-            .unwrap()
-            .read_item_from_index(0)
-            .unwrap();
+        let _temp_shard = shard.temp_shards.first().unwrap();
+        println!("{}", _temp_shard.get_last_index());
+        let item = _temp_shard.read_item_from_index(0).unwrap();
         assert_eq!("2:Hello Dogs".as_bytes().to_vec(), item);
 
         // Now that's reconciled. Parent should have the two records inserted.

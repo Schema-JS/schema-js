@@ -56,7 +56,7 @@ impl DataShard {
                             end_pos
                         }
                     } else {
-                        return Err(ShardErrors::UnknownOffset);
+                        data_reader.len() as u64
                     };
 
                     read_up_to

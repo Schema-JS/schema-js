@@ -227,9 +227,13 @@ mod test {
 
     #[tokio::test]
     pub async fn test_runtime_insert() -> anyhow::Result<()> {
+        let data_path = format!("./test_cases/data/{}", Uuid::new_v4().to_string());
         let data_path = std::env::current_dir()
             .unwrap()
-            .join(PathBuf::from("./test_cases/data"));
+            .join(PathBuf::from(data_path.as_str()));
+
+        std::fs::create_dir_all(data_path.clone()).unwrap();
+
         let now = std::time::Instant::now();
         {
             let mut create_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
@@ -266,9 +270,12 @@ mod test {
 
     #[tokio::test]
     pub async fn test_runtime_insert_file_persistence() -> anyhow::Result<()> {
+        let data_path = format!("./test_cases/data/{}", Uuid::new_v4().to_string());
         let data_path = std::env::current_dir()
             .unwrap()
-            .join(PathBuf::from("./test_cases/data"));
+            .join(PathBuf::from(data_path.as_str()));
+
+        std::fs::create_dir_all(data_path.clone()).unwrap();
         let now = std::time::Instant::now();
 
         for _ in 0..2 {
@@ -335,9 +342,10 @@ mod test {
 
     #[tokio::test]
     pub async fn test_runtime_insert_with_manager() -> anyhow::Result<()> {
+        let data_path = format!("./test_cases/data/{}", Uuid::new_v4().to_string());
         let data_path = std::env::current_dir()
             .unwrap()
-            .join(PathBuf::from("./test_cases/data"));
+            .join(PathBuf::from(data_path.as_str()));
         let now = std::time::Instant::now();
 
         {

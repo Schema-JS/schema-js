@@ -83,6 +83,7 @@ impl SchemeJsEngine {
 #[cfg(test)]
 mod test {
     use crate::engine::SchemeJsEngine;
+    use schemajs_config::SchemeJsConfig;
     use schemajs_data::shard::Shard;
     use schemajs_primitives::column::types::{DataTypes, DataValue};
     use schemajs_primitives::column::Column;
@@ -96,7 +97,8 @@ mod test {
 
     #[flaky_test::flaky_test]
     pub fn test_db_engine() {
-        let db_engine = Arc::new(RwLock::new(SchemeJsEngine::new(None)));
+        let config = SchemeJsConfig::default();
+        let db_engine = Arc::new(RwLock::new(SchemeJsEngine::new(None, Arc::new(config))));
 
         // Add database
         {
@@ -125,6 +127,7 @@ mod test {
                         required: false,
                         comment: None,
                         primary_key: false,
+                        default_index: Some(false),
                     },
                 );
 

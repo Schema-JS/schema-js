@@ -20,6 +20,7 @@ pub struct DataShardHeader {
     pub max_offset_positions: usize,
     pub id: Uuid,
     data: Arc<RwLock<DataHandler>>,
+    zero_offset: usize,
 }
 
 impl DataShardHeader {
@@ -30,6 +31,7 @@ impl DataShardHeader {
             id: uuid.unwrap_or_else(|| Uuid::new_v4()),
             max_offset_positions: Self::calculate_offset_pos(max_offsets as usize),
             data,
+            zero_offset: Self::calculate_offset_pos(0),
         }
     }
 
@@ -228,7 +230,7 @@ impl DataShardHeader {
 
         let val = u64::from_le_bytes(arr);
 
-        if offset > Self::calculate_offset_pos(0) && val <= 0 {
+        if offset > self.zero_offset && val <= 0 {
             None
         } else {
             // Convert the byte array to u64
