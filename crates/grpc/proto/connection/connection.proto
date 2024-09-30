@@ -1,5 +1,4 @@
 syntax = "proto3";
-import "google/protobuf/empty.proto";
 package sjs.connection;
 
 service ProtoConnectionService {
@@ -20,4 +19,5 @@ message CheckConnectionRequest {
 
 message CheckConnectionResponse {
     bool is_connected = 1;
+    optional string token = 2;
 }

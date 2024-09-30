@@ -1,0 +1,29 @@
+syntax = "proto3";
+package sjs.shared;
+import "shared/data_value.proto";
+
+message RowId {
+    message Metadata {
+        string table = 1;
+
+        // The type of ID.
+        oneof id_type {
+            // The auto-allocated ID of the entity.
+            // Never equal to zero. Values less than zero are discouraged and may not
+            // be supported in the future.
+            string sjs_uid = 2;
+
+            // The name of the entity.
+            // A name matching regex `__.*__` is reserved/read-only.
+            // A name must not be more than 1500 bytes when UTF-8 encoded.
+            // Cannot be `""`.
+            string id = 3;
+        }
+    }
+}
+
+message Row {
+    RowId key = 1;
+
+    map<string, sjs.shared.DataValue> properties = 3;
+}

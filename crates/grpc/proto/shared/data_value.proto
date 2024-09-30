@@ -1,0 +1,11 @@
+package sjs.shared;
+
+message DataValue {
+    oneof value_type {
+        bool null_value = 1;
+        string uuid_value = 2;
+        string string_value = 3;
+        bool bool_value = 4;
+        float number_value = 5;
+    }
+}

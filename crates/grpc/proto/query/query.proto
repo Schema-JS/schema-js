@@ -1,0 +1,27 @@
+syntax = "proto3";
+import "shared/data_value.proto";
+
+package sjs.query;
+
+message RowInsert {
+    string table_name = 1;
+    optional string id = 2;
+    map<string, sjs.shared.DataValue> row_values = 3;
+}
+
+// Define the request message that contains a list of RowInsert.
+message InsertRowsRequest {
+    repeated RowInsert rows = 1;
+}
+
+// Define the response message that can return a success or failure status.
+message InsertRowsResponse {
+    bool success = 1;
+    string message = 2; // Optional message to provide more info (like an error description).
+}
+
+// Define the gRPC service.
+service ProtoRowInsertService {
+    // RPC for inserting rows into a table.
+    rpc InsertRows (InsertRowsRequest) returns (InsertRowsResponse);
+}

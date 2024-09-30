@@ -26,15 +26,6 @@ pub async fn op_engine_insert_row(
         db.query_manager.clone()
     };
 
-    // Check if the Value is an object
-    if let serde_json::Value::Object(ref mut obj) = row {
-        // Insert a new field
-        obj.insert(
-            "_uid".to_string(),
-            serde_json::Value::String(Uuid::new_v4().to_string()),
-        );
-    }
-
     let insert = query_manager.insert(RowJson::from(RowData {
         table: table_name,
         value: row,

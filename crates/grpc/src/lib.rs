@@ -1,4 +1,4 @@
-mod interceptors;
+pub mod interceptors;
 pub mod server;
 mod services;
 

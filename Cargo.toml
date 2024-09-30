@@ -74,6 +74,8 @@ prost = "0.13.3"
 tonic-async-interceptor = "0.12.0"
 bcrypt = "0.15.1"
 clap = { version = "4.5.18", features = ["cargo", "string", "env", "derive"] }
+dashmap = "6.1.0"
+tonic-middleware = "0.2.2"
 
 [profile.dind]
 inherits = "dev"

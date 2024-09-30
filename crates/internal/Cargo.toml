@@ -15,3 +15,5 @@ schemajs_query = { path = "../query" }
 schemajs_config = { path = "../config" }
 serde_json.workspace = true
 bcrypt.workspace = true
+uuid.workspace = true
+dashmap.workspace = true
