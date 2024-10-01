@@ -171,11 +171,11 @@ impl<T: Row<T>> QuerySearchManager<T> {
         Some(CompositeKey(key_parts))
     }
 
-    pub fn search(&self, table_name: String, ops: &QueryOps) -> Result<Vec<T>, QueryError> {
+    pub fn search(&self, table_name: &str, ops: &QueryOps) -> Result<Vec<T>, QueryError> {
         let get_table_shard = self
             .table_shards
-            .get(&table_name)
-            .ok_or_else(|| QueryError::InvalidTable(table_name.clone()))?;
+            .get(table_name)
+            .ok_or_else(|| QueryError::InvalidTable(table_name.to_string()))?;
 
         let pointers = self.execute_query(&get_table_shard, ops);
 
@@ -361,7 +361,7 @@ mod test {
 
         tbl.temps.reconcile_all();
 
-        let results = search_manager.search("users".to_string(), &ops).unwrap();
+        let results = search_manager.search("users", &ops).unwrap();
         let row_0 = &results[0];
 
         let col = tbl.table.get_column("user_name").unwrap();

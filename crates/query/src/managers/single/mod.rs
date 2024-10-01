@@ -163,10 +163,10 @@ impl<T: Row<T>> SingleQueryManager<T> {
         if let Some(table_shard) = table {
             let uuid_col = Table::get_internal_uid();
             let uuid = row
-                .get_value(&uuid_col)
+                .get_value(uuid_col)
                 .unwrap_or_else(|| DataValue::Uuid(Uuid::new_v4()));
 
-            row.set_value(&uuid_col, uuid.clone());
+            row.set_value(uuid_col, uuid.clone());
 
             let serialized_value = row
                 .serialize()

@@ -25,7 +25,7 @@ impl insert_service::proto_row_insert_service_server::ProtoRowInsertService for 
             let engine = self.db_manager.engine();
             let db_manager = engine.read().unwrap();
             let user = ctx.get_user();
-            let db = db_manager.find_by_name_ref(user.scheme.clone());
+            let db = db_manager.find_by_name_ref(&user.scheme);
 
             let mut err = false;
 

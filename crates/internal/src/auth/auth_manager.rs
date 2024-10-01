@@ -50,7 +50,7 @@ impl AuthManager {
     pub fn verify_user(&self, args: VerifyUserArgs) -> Option<User> {
         let engine = self.engine.read().unwrap();
         let table = &*INTERNAL_USER_TABLE;
-        if let Some(db) = engine.find_by_name_ref(args.scheme_name.clone()) {
+        if let Some(db) = engine.find_by_name_ref(&args.scheme_name) {
             let u = Self::search_user(db, &args.identifier);
 
             if let Some(user) = u {
@@ -105,10 +105,10 @@ impl AuthManager {
         let mut engine = self.engine.write().unwrap();
         let config = engine.config.clone();
         let default_scheme = config.default.clone().unwrap();
-        let default_scheme_name = default_scheme.scheme_name.clone();
+        let default_scheme_name = &default_scheme.scheme_name;
         // Load default user
         let db = engine
-            .find_by_name(default_scheme_name.to_string())
+            .find_by_name(default_scheme_name)
             .unwrap();
 
         let scheme_username = default_scheme.username.clone();
@@ -127,7 +127,7 @@ impl AuthManager {
                             true,
                             true,
                             vec![],
-                            default_scheme_name,
+                            default_scheme_name.to_string(),
                         ))
                         .unwrap(),
                     }),
@@ -142,7 +142,7 @@ impl AuthManager {
             .query_manager
             .search_manager
             .search(
-                INTERNAL_USER_TABLE_NAME.to_string(),
+                INTERNAL_USER_TABLE_NAME,
                 &QueryOps::And(vec![QueryOps::Condition(QueryVal {
                     key: "identifier".to_string(),
                     filter_type: "=".to_string(),

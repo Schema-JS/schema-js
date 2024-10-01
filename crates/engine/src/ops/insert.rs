@@ -22,7 +22,7 @@ pub async fn op_engine_insert_row(
 
     let query_manager = {
         let read_engine = state.read().unwrap();
-        let db = read_engine.find_by_name_ref(db_name.clone()).unwrap();
+        let db = read_engine.find_by_name_ref(db_name.as_str()).unwrap();
         db.query_manager.clone()
     };
 

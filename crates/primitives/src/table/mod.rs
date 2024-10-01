@@ -1,5 +1,6 @@
 pub mod metadata;
 
+use std::cell::LazyCell;
 use crate::column::types::DataTypes;
 use crate::column::Column;
 use crate::index::Index;
@@ -7,6 +8,7 @@ use crate::table::metadata::TableMetadata;
 use schemajs_index::index_type::IndexType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Table {
@@ -18,35 +20,43 @@ pub struct Table {
     pub metadata: TableMetadata,
 }
 
+static UID_COL: LazyLock<Column> = LazyLock::new(|| {
+    Column::new("_uid", DataTypes::Uuid)
+        .set_required(true)
+        .set_primary_key(true)
+});
+
+static UID_INDEX: LazyLock<Index> = LazyLock::new(|| {
+    Index {
+        name: "uidindx".to_string(),
+        members: vec!["_uid".to_string()],
+        index_type: IndexType::Hash,
+    }
+});
+
 impl Table {
     pub fn new(name: &str) -> Self {
         Table {
             name: name.to_string(),
-            columns: HashMap::from([("_uid".to_string(), Self::get_internal_uid())]),
+            columns: HashMap::from([("_uid".to_string(), Self::get_internal_uid().clone())]),
             metadata: Default::default(),
             primary_key: "_uid".to_string(),
-            indexes: vec![Self::get_internal_uid_index()],
+            indexes: vec![Self::get_internal_uid_index().clone()],
         }
     }
 
     pub fn init(&mut self) {
         self.columns
-            .insert("_uid".to_string(), Self::get_internal_uid());
-        self.indexes.push(Self::get_internal_uid_index());
+            .insert("_uid".to_string(), Self::get_internal_uid().clone());
+        self.indexes.push(Self::get_internal_uid_index().clone());
     }
 
-    pub fn get_internal_uid() -> Column {
-        Column::new("_uid", DataTypes::Uuid)
-            .set_required(true)
-            .set_primary_key(true)
+    pub fn get_internal_uid<'a>() -> &'a Column {
+        &*UID_COL
     }
 
-    fn get_internal_uid_index() -> Index {
-        Index {
-            name: "uidindx".to_string(),
-            members: vec!["_uid".to_string()],
-            index_type: IndexType::Hash,
-        }
+    fn get_internal_uid_index<'a>() -> &'a Index {
+        &*UID_INDEX
     }
 
     pub fn add_index(mut self, index: Index) -> Self {

@@ -319,7 +319,7 @@ mod test {
 
         let val = {
             let reader = last_rt.engine.read().unwrap();
-            let db = reader.find_by_name_ref("public".to_string()).unwrap();
+            let db = reader.find_by_name_ref("public").unwrap();
             let table = db.query_manager.tables.get("users").unwrap();
             let table_read = table.data.read().unwrap();
             let header_reader = table_read.current_master_shard.header.read().unwrap();
