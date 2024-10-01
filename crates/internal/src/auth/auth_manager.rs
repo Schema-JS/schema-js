@@ -50,7 +50,7 @@ impl AuthManager {
     pub fn verify_user(&self, args: VerifyUserArgs) -> Option<User> {
         let engine = self.engine.read().unwrap();
         let table = &*INTERNAL_USER_TABLE;
-        if let Some(db) = engine.find_by_name_ref(args.scheme_name) {
+        if let Some(db) = engine.find_by_name_ref(args.scheme_name.clone()) {
             let u = Self::search_user(db, &args.identifier);
 
             if let Some(user) = u {
@@ -92,6 +92,7 @@ impl AuthManager {
                             .unwrap_or_else(|| &false)
                             .clone(),
                         roles: vec![],
+                        scheme: args.scheme_name,
                     });
                 }
             }
@@ -126,6 +127,7 @@ impl AuthManager {
                             true,
                             true,
                             vec![],
+                            default_scheme_name,
                         ))
                         .unwrap(),
                     }),

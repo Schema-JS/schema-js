@@ -74,6 +74,16 @@ impl From<&[u8]> for RowJson {
 }
 
 impl Row<RowJson> for RowJson {
+    fn from_serializable<R>(table: String, data: R) -> Result<Self, ()>
+    where
+        R: Serialize,
+    {
+        Ok(RowJson::from(RowData {
+            table,
+            value: serde_json::to_value(data).map_err(|e| ())?,
+        }))
+    }
+
     fn get_value(&self, column: &Column) -> Option<DataValue> {
         let potential_val = self.value.value.get(column.name.to_string());
         match potential_val {

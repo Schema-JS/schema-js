@@ -7,6 +7,7 @@ fn main() {
     ];
 
     tonic_build::configure()
+        .type_attribute(".", "#[derive(serde::Deserialize, serde::Serialize)]")
         .emit_rerun_if_changed(true)
         .compile(&protos, &["./proto"])
         .unwrap();

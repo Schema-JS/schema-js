@@ -124,7 +124,9 @@ impl SchemeJsRuntime {
     ) -> Result<()> {
         match &config {
             WorkerRuntimeOpts::Main(conf) => {
-                let databases = conf.config.workspace.databases.clone();
+                let def_scheme_name = engine.config.default.clone().unwrap().scheme_name;
+                let mut databases = conf.config.workspace.databases.clone();
+                databases.push(def_scheme_name.clone());
 
                 for database_path in databases {
                     let path = current_folder.join(&database_path);

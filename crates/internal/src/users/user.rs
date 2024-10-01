@@ -15,6 +15,7 @@ pub struct User {
     pub is_admin: bool,
     pub is_super_admin: bool,
     pub roles: Vec<Role>,
+    pub scheme: String,
 }
 
 pub const INTERNAL_USER_TABLE_NAME: &str = "sjs_users";
@@ -49,6 +50,7 @@ pub fn create_user(
     is_admin: bool,
     is_super_admin: bool,
     roles: Vec<Role>,
+    scheme: String,
 ) -> User {
     let hashed_password = bcrypt::hash(password, 12).unwrap();
     let creation_time = SystemTime::now()
@@ -64,5 +66,6 @@ pub fn create_user(
         is_admin,
         is_super_admin,
         roles,
+        scheme,
     }
 }

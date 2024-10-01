@@ -3,6 +3,7 @@ pub mod table_shard;
 use crate::errors::QueryError;
 use crate::managers::single::table_shard::TableShard;
 use crate::row::Row;
+use crate::row_json::{RowData, RowJson};
 use crate::search::search_manager::QuerySearchManager;
 use chashmap::CHashMap;
 use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
@@ -10,6 +11,7 @@ use schemajs_data::shard::temp_map_shard::DataWithIndex;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::table::Table;
+use serde::Serialize;
 use std::hash::Hash;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -108,6 +110,16 @@ impl<T: Row<T>> SingleQueryManager<T> {
                 },
             ),
         );
+    }
+
+    pub fn insert_serializable<R>(&self, table_name: &str, row: R) -> Result<Uuid, QueryError>
+    where
+        R: Serialize,
+    {
+        let row = T::from_serializable(table_name.to_string(), row)
+            .map_err(|e| QueryError::InvalidSerialization)?;
+
+        self.insert(row)
     }
 
     /// Inserts a row in the first available temporary shard.

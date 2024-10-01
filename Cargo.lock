@@ -2675,6 +2675,8 @@ version = "0.1.0"
 dependencies = [
  "prost",
  "schemajs_internal",
+ "schemajs_query",
+ "serde",
  "tonic",
  "tonic-async-interceptor",
  "tonic-build",
