@@ -40,10 +40,3 @@ pub enum QueryOps {
     Or(Vec<QueryOps>),
     Condition(QueryVal),
 }
-
-#[derive(Debug, Clone, EnumAsInner, PartialEq)]
-pub enum QueryPlan {
-    And(Vec<QueryPlan>),  // Nested AND operations
-    Or(Vec<QueryPlan>),   // Nested OR operations
-    Index(Option<Index>), // A specific index to use
-}

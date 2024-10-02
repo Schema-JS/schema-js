@@ -25,3 +25,47 @@ service ProtoRowInsertService {
     // RPC for inserting rows into a table.
     rpc InsertRows (InsertRowsRequest) returns (InsertRowsResponse);
 }
+
+// Define the QueryVal struct
+message QueryVal {
+    string key = 1;
+    string filter_type = 2;
+    sjs.shared.DataValue value = 3;
+}
+
+// Define QueryOps enum as a message with a oneof for the different variants
+message QueryOps {
+    oneof operation {
+        AndOp and_op = 1;
+        OrOp or_op = 2;
+        QueryVal condition = 3;
+    }
+}
+
+// Message for And operation (repeated QueryOps for nested operations)
+message AndOp {
+    repeated QueryOps ops = 1;
+}
+
+// Message for Or operation (repeated QueryOps for nested operations)
+message OrOp {
+    repeated QueryOps ops = 1;
+}
+
+message QueryDataRequest {
+    string table_name = 1;
+    QueryOps query = 2;
+}
+
+message DataMap {
+    map<string, sjs.shared.DataValue> values = 1;
+}
+
+message QueryResponse {
+    repeated DataMap values = 1;
+}
+
+service ProtoQueryService {
+    // RPC for inserting rows into a table.
+    rpc QueryRows (QueryDataRequest) returns (QueryResponse);
+}
