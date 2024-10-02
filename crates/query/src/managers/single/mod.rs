@@ -115,15 +115,12 @@ impl<T: Row<T>> SingleQueryManager<T> {
 
     pub fn insert_from_value_map(
         &self,
-        table_name: &str,
-        data: Vec<HashMap<String, DataValue>>,
+        data: Vec<(String, HashMap<String, DataValue>)>,
         master_insert: bool,
     ) -> Result<Option<Uuid>, QueryError> {
         let mut rows: Vec<T> = data
             .into_iter()
-            .map(|e| {
-                T::from_map(table_name.to_string(), e).map_err(|_| QueryError::InvalidInsertion)
-            })
+            .map(|e| T::from_map(e.0, e.1).map_err(|_| QueryError::InvalidInsertion))
             .collect::<Result<Vec<_>, _>>()?;
         self.raw_insert(&mut rows, master_insert)
     }
@@ -239,6 +236,8 @@ impl<T: Row<T>> SingleQueryManager<T> {
                         );
                     }
                 }
+            } else {
+                return Err(QueryError::InvalidTable(table_name));
             }
         }
 

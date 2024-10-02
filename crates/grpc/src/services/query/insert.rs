@@ -2,7 +2,9 @@ use crate::define_sjs_grpc_service;
 use crate::services::query::insert::insert_service::{
     InsertRowsRequest, InsertRowsResponse, RowInsert,
 };
-use crate::services::query::insert::shared::data_value::ValueType;
+use crate::services::shared::shared;
+use crate::services::shared::shared::data_value::ValueType;
+use crate::utils::common::convert_to_data_value;
 use schemajs_internal::auth::types::UserContext;
 use schemajs_primitives::column::types::DataValue;
 use serde::{Deserialize, Serialize};
@@ -12,9 +14,6 @@ use std::sync::Arc;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-pub mod shared {
-    tonic::include_proto!("sjs.shared");
-}
 pub mod insert_service {
     tonic::include_proto!("sjs.query");
 }
@@ -28,41 +27,34 @@ define_sjs_grpc_service!(InsertService, {
         let engine = self.db_manager.engine();
         let db_manager = engine
             .read()
-            .map_err(|e| Status::internal("SJS not available"))?;
+            .map_err(|e| Status::internal(format!("Failed to read engine: {:?}", e)))?;
         let user = user_context.get_user();
         let db = match db_manager.find_by_name_ref(&user.scheme) {
             Some(db) => db,
             None => return Err(Status::not_found("Database not found")),
         };
 
-        let mut new_rows: Vec<HashMap<String, DataValue>> = vec![];
+        let new_rows: Vec<(String, HashMap<String, DataValue>)> = rows
+            .into_iter()
+            .map(|row| {
+                let hrow: HashMap<String, DataValue> = row
+                    .row_values
+                    .into_iter()
+                    .map(|(col_name, col_val)| {
+                        let value = match col_val.value_type {
+                            Some(vt) => convert_to_data_value(vt),
+                            None => DataValue::Null, // Handle the case where value_type is None
+                        };
+                        (col_name, value)
+                    })
+                    .collect();
+                (row.table_name, hrow)
+            })
+            .collect();
 
-        for row in rows {
-            let mut hrow: HashMap<String, DataValue> = HashMap::new();
+        let insert = db.query_manager.insert_from_value_map(new_rows, false);
 
-            for cols in row.row_values.iter() {
-                let val = cols
-                    .1
-                    .clone()
-                    .value_type
-                    .unwrap_or_else(|| ValueType::NullValue(true));
-                let value_type = match val {
-                    ValueType::NullValue(_) => DataValue::Null,
-                    ValueType::UuidValue(u) => DataValue::Uuid(Uuid::from_str(&u).unwrap()),
-                    ValueType::StringValue(s) => DataValue::String(s),
-                    ValueType::BoolValue(b) => DataValue::Boolean(b),
-                    ValueType::NumberValue(n) => {
-                        DataValue::Number(serde_json::value::Number::from_f64(n as f64).unwrap())
-                    }
-                };
-
-                hrow.insert(cols.0.clone(), value_type);
-            }
-
-            new_rows.push(hrow);
-        }
-
-        Ok(true)
+        Ok(insert.is_ok())
     }
 });
 
@@ -77,9 +69,9 @@ impl insert_service::proto_row_insert_service_server::ProtoRowInsertService for 
             None => return Err(Status::unauthenticated("Invalid session")),
         };
 
-        let err = self.insert_rows_into_db(ctx.clone(), request.into_inner().rows)?;
+        let inserted = self.insert_rows_into_db(ctx.clone(), request.into_inner().rows)?;
 
-        if err {
+        if !inserted {
             Err(Status::aborted("There was an issue inserting rows"))
         } else {
             Ok(Response::new(InsertRowsResponse {
