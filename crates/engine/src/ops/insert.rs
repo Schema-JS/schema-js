@@ -14,7 +14,7 @@ pub async fn op_engine_insert_row(
     #[string] db_name: String,
     #[string] table_name: String,
     #[serde] mut row: serde_json::Value,
-) -> Result<Uuid, QueryError> {
+) -> Result<Option<Uuid>, QueryError> {
     let mut mut_state = state.borrow_mut();
     let state = mut_state
         .borrow_mut::<Arc<RwLock<SchemeJsEngine>>>()

@@ -16,6 +16,7 @@ use schemajs_primitives::table::Table;
 use schemajs_workers::context::{MainWorkerRuntimeOpts, WorkerRuntimeOpts};
 use serde::{Deserialize, Serialize};
 use std::cell::{RefCell, RefMut};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
@@ -127,9 +128,17 @@ impl SchemeJsRuntime {
                 let def_scheme_name = engine.config.default.clone().unwrap().scheme_name;
                 let mut databases = conf.config.workspace.databases.clone();
                 databases.push(def_scheme_name.clone());
+                let mut evaluated_paths = HashSet::new();
 
                 for database_path in databases {
                     let path = current_folder.join(&database_path);
+
+                    if evaluated_paths.contains(&path) {
+                        continue;
+                    } else {
+                        evaluated_paths.insert(path.clone());
+                    }
+
                     let (scheme_name, table_specifiers) = engine.load_database_schema(&path)?;
                     let mut tables = vec![];
                     for table_specifier in table_specifiers {

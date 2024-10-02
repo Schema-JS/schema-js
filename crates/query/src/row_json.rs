@@ -1,10 +1,11 @@
-use crate::row::Row;
+use crate::row::{Row, RowBuilder};
 use crate::serializer;
 use crate::serializer::RowSerializationError;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::column::Column;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 
 /// `RowData` represents the core structure for storing a row's data in a JSON format.
@@ -73,17 +74,25 @@ impl From<&[u8]> for RowJson {
     }
 }
 
-impl Row<RowJson> for RowJson {
+impl RowBuilder<RowJson> for RowJson {
     fn from_serializable<R>(table: String, data: R) -> Result<Self, ()>
     where
         R: Serialize,
     {
-        Ok(RowJson::from(RowData {
-            table,
-            value: serde_json::to_value(data).map_err(|e| ())?,
-        }))
+        let json = serde_json::to_value(data).map_err(|e| ())?;
+        Ok(RowJson::from(RowData { table, value: json }))
     }
 
+    fn from_map(table_name: String, data: HashMap<String, DataValue>) -> Result<RowJson, ()> {
+        let value = Value::Object(data.into_iter().map(|e| (e.0, e.1.to_value())).collect());
+        Ok(RowJson::from(RowData {
+            table: table_name,
+            value,
+        }))
+    }
+}
+
+impl Row<RowJson> for RowJson {
     fn get_value(&self, column: &Column) -> Option<DataValue> {
         let potential_val = self.value.value.get(column.name.to_string());
         match potential_val {

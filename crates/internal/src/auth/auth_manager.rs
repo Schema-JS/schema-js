@@ -107,9 +107,7 @@ impl AuthManager {
         let default_scheme = config.default.clone().unwrap();
         let default_scheme_name = &default_scheme.scheme_name;
         // Load default user
-        let db = engine
-            .find_by_name(default_scheme_name)
-            .unwrap();
+        let db = engine.find_by_name(default_scheme_name).unwrap();
 
         let scheme_username = default_scheme.username.clone();
 
@@ -119,7 +117,7 @@ impl AuthManager {
             let _ = db
                 .query_manager
                 .raw_insert(
-                    RowJson::from(RowData {
+                    &mut [RowJson::from(RowData {
                         table: INTERNAL_USER_TABLE_NAME.to_string(),
                         value: serde_json::to_value(create_user(
                             scheme_username,
@@ -130,7 +128,7 @@ impl AuthManager {
                             default_scheme_name.to_string(),
                         ))
                         .unwrap(),
-                    }),
+                    })],
                     true,
                 )
                 .unwrap();

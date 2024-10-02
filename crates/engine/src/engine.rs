@@ -109,9 +109,7 @@ mod test {
         {
             {
                 let mut reader = db_engine.read().unwrap();
-                let db = reader
-                    .find_by_name_ref("rust-test-random")
-                    .unwrap();
+                let db = reader.find_by_name_ref("rust-test-random").unwrap();
 
                 assert_eq!(db.db_folder.exists(), true);
             }

@@ -2,7 +2,16 @@ use crate::serializer::RowSerializer;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::column::Column;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::hash::Hash;
+
+pub trait RowBuilder<T> {
+    fn from_serializable<R>(table_name: String, data: R) -> Result<T, ()>
+    where
+        R: Serialize;
+
+    fn from_map(table_name: String, data: HashMap<String, DataValue>) -> Result<T, ()>;
+}
 
 /// The `Row` trait defines the core operations that any row in the database must implement.
 /// It extends the `RowSerializer` trait to ensure that rows can be serialized and deserialized
@@ -14,10 +23,7 @@ use std::hash::Hash;
 /// - `get_value`: Retrieves the value of a specific column from the row, returning `Option<DataValue>`.
 /// - `get_table_name`: Returns the name of the table to which the row belongs as a `String`.
 /// - `validate`: Validates the row, ensuring it adheres to certain rules or constraints, returning a `bool` indicating whether the row is valid.
-pub trait Row<T>: RowSerializer<T> + for<'a> From<&'a [u8]> {
-    fn from_serializable<R>(table_name: String, data: R) -> Result<Self, ()>
-    where
-        R: Serialize;
+pub trait Row<T>: RowSerializer<T> + for<'a> From<&'a [u8]> + RowBuilder<T> {
     /// Retrieves the value from a specific column in the row.
     ///
     /// # Parameters:

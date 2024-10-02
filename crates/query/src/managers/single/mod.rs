@@ -12,6 +12,7 @@ use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::table::Table;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -112,7 +113,26 @@ impl<T: Row<T>> SingleQueryManager<T> {
         );
     }
 
-    pub fn insert_serializable<R>(&self, table_name: &str, row: R) -> Result<Uuid, QueryError>
+    pub fn insert_from_value_map(
+        &self,
+        table_name: &str,
+        data: Vec<HashMap<String, DataValue>>,
+        master_insert: bool,
+    ) -> Result<Option<Uuid>, QueryError> {
+        let mut rows: Vec<T> = data
+            .into_iter()
+            .map(|e| {
+                T::from_map(table_name.to_string(), e).map_err(|_| QueryError::InvalidInsertion)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        self.raw_insert(&mut rows, master_insert)
+    }
+
+    pub fn insert_serializable<R>(
+        &self,
+        table_name: &str,
+        row: R,
+    ) -> Result<Option<Uuid>, QueryError>
     where
         R: Serialize,
     {
@@ -144,7 +164,9 @@ impl<T: Row<T>> SingleQueryManager<T> {
     ///    }
     /// });
     /// if let Ok(uuid) = uuid {
+    /// if let Some(uuid) = uuid {
     ///     println!("Success inserting row. UUID : {}", uuid.to_string());
+    /// }
     /// } else {
     ///     panic!("Row could not be inserted")
     /// }
@@ -152,48 +174,74 @@ impl<T: Row<T>> SingleQueryManager<T> {
     ///
     /// `SingleQueryManager` will require a folder to be created for `database-name` otherwise it will panic.
     /// For a reference on how this is plugged: crates/query/src/search/search_manager.rs#test_search_manager
-    pub fn insert(&self, row: T) -> Result<Uuid, QueryError> {
-        self.raw_insert(row, false)
+    pub fn insert(&self, row: T) -> Result<Option<Uuid>, QueryError> {
+        self.raw_insert(&mut [row], false)
     }
 
-    pub fn raw_insert(&self, mut row: T, master_insert: bool) -> Result<Uuid, QueryError> {
-        let table_name = row.get_table_name();
-        let table = self.tables.get(&table_name);
+    pub fn raw_insert(
+        &self,
+        rows: &mut [T],
+        master_insert: bool,
+    ) -> Result<Option<Uuid>, QueryError> {
+        let rows_len = rows.len();
+        let mut table_inserts: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
+        let mut id = None;
 
-        if let Some(table_shard) = table {
-            let uuid_col = Table::get_internal_uid();
-            let uuid = row
-                .get_value(uuid_col)
-                .unwrap_or_else(|| DataValue::Uuid(Uuid::new_v4()));
+        for row in rows.iter_mut() {
+            let table_name = row.get_table_name();
 
-            row.set_value(uuid_col, uuid.clone());
+            // UUid
+            {
+                let uuid_col = Table::get_internal_uid();
+                let uuid = row.get_value(uuid_col);
+
+                if uuid.is_none() {
+                    let uuid = Uuid::new_v4();
+
+                    if rows_len == 1 {
+                        id = Some(uuid.clone());
+                    }
+
+                    row.set_value(uuid_col, DataValue::Uuid(uuid));
+                }
+            }
 
             let serialized_value = row
                 .serialize()
-                .map_err(|e| QueryError::InvalidSerialization)?;
+                .map_err(|_| QueryError::InvalidSerialization)?;
 
-            if !master_insert {
-                table_shard.temps.insert(&serialized_value)?;
-            } else {
-                let pointer = table_shard
-                    .data
-                    .write()
-                    .unwrap()
-                    .insert_rows(&[&serialized_value]);
-
-                TableShard::<T>::insert_indexes(
-                    table_shard.table.clone(),
-                    table_shard.indexes.clone(),
-                    vec![DataWithIndex {
-                        data: serialized_value,
-                        index: pointer as u64,
-                    }],
-                );
-            }
-
-            Ok(uuid.as_uuid().unwrap().clone())
-        } else {
-            Err(QueryError::InvalidTable(table_name))
+            table_inserts
+                .entry(table_name.clone())
+                .or_insert_with(|| Vec::new())
+                .push(serialized_value);
         }
+
+        for (table_name, rows) in table_inserts {
+            if let Some(table_shard) = self.tables.get(&table_name) {
+                let vec_of_slices: Vec<&[u8]> = rows.iter().map(|v| v.as_slice()).collect();
+                if !master_insert {
+                    table_shard.temps.insert(&vec_of_slices)?;
+                } else {
+                    let mut data_lock = table_shard
+                        .data
+                        .write()
+                        .map_err(|e| QueryError::InvalidInsertion)?;
+                    for row in vec_of_slices {
+                        let pointer = data_lock.insert_rows(&[row]);
+
+                        TableShard::<T>::insert_indexes(
+                            table_shard.table.clone(),
+                            table_shard.indexes.clone(),
+                            vec![DataWithIndex {
+                                data: row.to_vec(),
+                                index: pointer as u64,
+                            }],
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(id)
     }
 }

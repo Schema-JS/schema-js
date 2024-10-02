@@ -67,7 +67,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         S::new(shard_path, self.temp_opts.to_config(), None)
     }
 
-    pub fn insert_row(&mut self, data: &[u8]) -> Result<u64, ShardErrors> {
+    pub fn raw_insert_rows(&mut self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
         let find_usable_shard = { self.temp_shards.iter().position(|i| i.has_space()) };
 
         let shard_index = match find_usable_shard {
@@ -84,7 +84,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
             self.temp_shards
                 .get(shard_index)
                 .ok_or(ShardErrors::UnknownShard)?
-                .insert_item(&[data])
+                .insert_item(data)
         }
     }
 
@@ -196,7 +196,7 @@ mod test {
         );
 
         shard
-            .insert_row(&"0:Hello world".as_bytes().to_vec())
+            .raw_insert_rows(&[&"0:Hello world".as_bytes().to_vec()])
             .unwrap();
 
         let curr_shard_id = {
@@ -221,11 +221,11 @@ mod test {
         assert!(does_shard_still_exist);
 
         shard
-            .insert_row(&"1:Hello Cats".as_bytes().to_vec())
+            .raw_insert_rows(&[&"1:Hello Cats".as_bytes().to_vec()])
             .unwrap();
         // Should reconcile automatically because the tempshard only supports 2 items per shard.
         let a = shard
-            .insert_row(&"2:Hello Dogs".as_bytes().to_vec())
+            .raw_insert_rows(&[&"2:Hello Dogs".as_bytes().to_vec()])
             .unwrap();
 
         // If it reconciled, it doesn't exist anymore.

@@ -1,12 +1,12 @@
 pub mod metadata;
 
-use std::cell::LazyCell;
 use crate::column::types::DataTypes;
 use crate::column::Column;
 use crate::index::Index;
 use crate::table::metadata::TableMetadata;
 use schemajs_index::index_type::IndexType;
 use serde::{Deserialize, Serialize};
+use std::cell::LazyCell;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
@@ -26,12 +26,10 @@ static UID_COL: LazyLock<Column> = LazyLock::new(|| {
         .set_primary_key(true)
 });
 
-static UID_INDEX: LazyLock<Index> = LazyLock::new(|| {
-    Index {
-        name: "uidindx".to_string(),
-        members: vec!["_uid".to_string()],
-        index_type: IndexType::Hash,
-    }
+static UID_INDEX: LazyLock<Index> = LazyLock::new(|| Index {
+    name: "uidindx".to_string(),
+    members: vec!["_uid".to_string()],
+    index_type: IndexType::Hash,
 });
 
 impl Table {

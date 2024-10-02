@@ -13,8 +13,12 @@ prost.workspace = true
 tonic-async-interceptor.workspace = true
 schemajs_internal = { path = "../internal" }
 schemajs_query = { path = "../query" }
+schemajs_engine = { path = "../engine" }
+schemajs_primitives = { path = "../primitives" }
 tonic-middleware.workspace = true
 serde.workspace = true
+uuid = { version = "1.10.0", features = ["v4"] }
+serde_json.workspace = true
 
 [build-dependencies]
 tonic-build = "0.12.2"
