@@ -11,7 +11,7 @@ use std::sync::{Arc, RwLock};
 use walkdir::WalkDir;
 
 pub struct SchemeJsEngine {
-    pub databases: Vec<EngineDb>,
+    pub databases: Vec<Arc<EngineDb>>,
     pub data_path_dir: Option<PathBuf>,
     pub config: Arc<SchemeJsConfig>,
 }
@@ -59,24 +59,20 @@ impl SchemeJsEngine {
         Ok((schema_name.to_string(), table_specifiers))
     }
 
-    pub fn register_tables(&mut self, schema_name: &str, loaded_tables: Vec<Table>) {
-        let mut db = self.find_by_name(schema_name).unwrap();
+    pub fn register_tables(&self, schema_name: &str, loaded_tables: Vec<Table>) {
+        let mut db = self.find_by_name_ref(schema_name).unwrap();
         for table in loaded_tables {
             db.add_table(table);
         }
     }
 
-    pub fn find_by_name(&mut self, name: &str) -> Option<&mut EngineDb> {
-        self.databases.iter_mut().find(|i| i.name == name)
-    }
-
-    pub fn find_by_name_ref(&self, name: &str) -> Option<&EngineDb> {
+    pub fn find_by_name_ref(&self, name: &str) -> Option<&Arc<EngineDb>> {
         self.databases.iter().find(|i| i.name == name)
     }
 
     pub fn add_database(&mut self, name: &str) {
         self.databases
-            .push(EngineDb::new(self.data_path_dir.clone(), name))
+            .push(Arc::new(EngineDb::new(self.data_path_dir.clone(), name)))
     }
 }
 
@@ -138,7 +134,7 @@ mod test {
                 };
 
                 let mut writer = db_engine.write().unwrap();
-                let mut db = writer.find_by_name("rust-test-random").unwrap();
+                let mut db = writer.find_by_name_ref("rust-test-random").unwrap();
                 db.add_table(table);
             }
         }
@@ -189,7 +185,7 @@ mod test {
         // Assuming `temp_shards` is part of `EngineTable` and is a `RwLock<HashMap<String, Shard>>`
         {
             let mut reader = db_engine.write().unwrap();
-            let mut db = reader.find_by_name("rust-test-random").unwrap();
+            let mut db = reader.find_by_name_ref("rust-test-random").unwrap();
             let tbl = db.query_manager.tables.get("users").unwrap();
             tbl.temps.reconcile_all();
 

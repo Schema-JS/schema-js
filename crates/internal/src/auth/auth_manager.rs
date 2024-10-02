@@ -107,7 +107,7 @@ impl AuthManager {
         let default_scheme = config.default.clone().unwrap();
         let default_scheme_name = &default_scheme.scheme_name;
         // Load default user
-        let db = engine.find_by_name(default_scheme_name).unwrap();
+        let db = engine.find_by_name_ref(default_scheme_name).unwrap();
 
         let scheme_username = default_scheme.username.clone();
 
@@ -136,7 +136,7 @@ impl AuthManager {
     }
 
     fn search_user(db: &EngineDb, scheme_username: &String) -> Option<RowJson> {
-        let users = db
+        let (users, _) = db
             .query_manager
             .search_manager
             .search(

@@ -7,6 +7,7 @@ export class Column {
     public comment?: string;
     public required: boolean = false;
     public primaryKey: boolean = false;
+    public defaultIndex: boolean = true;
 
     constructor(name: string, dataType?: DataTypes) {
         this.name = name;

@@ -46,6 +46,18 @@ impl Table {
     pub fn init(&mut self) {
         self.columns
             .insert("_uid".to_string(), Self::get_internal_uid().clone());
+
+        for (col_name, col) in &self.columns {
+            if col_name == "_uid" {
+                continue;
+            }
+            self.indexes.push(Index {
+                name: format!("{}_indx", col_name),
+                members: vec![col_name.to_string()],
+                index_type: IndexType::Hash,
+            });
+        }
+
         self.indexes.push(Self::get_internal_uid_index().clone());
     }
 

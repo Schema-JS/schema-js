@@ -40,7 +40,7 @@ impl SchemeJsManager {
             let engine = engine.clone();
             let running = running.clone();
             let cancel_token = self.cancellation_token.clone();
-
+            println!("Task detected");
             tokio::spawn(async move {
                 select! {
                     _ = cancel_token.cancelled() => {
@@ -58,7 +58,7 @@ impl SchemeJsManager {
         match task.duration {
             TaskDuration::Defined(dur) => {
                 let mut interval = tokio::time::interval(dur);
-                while running.load(Ordering::Relaxed) {
+                while running.load(Ordering::SeqCst) {
                     interval.tick().await;
                     let clone_rt_ref = engine.clone();
                     let cb = task.func.cb.clone();

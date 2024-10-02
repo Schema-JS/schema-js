@@ -5,6 +5,7 @@ use crate::row::Row;
 use chashmap::CHashMap;
 use schemajs_index::composite_key::CompositeKey;
 use schemajs_primitives::index::Index;
+use schemajs_primitives::table::Table;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -171,7 +172,11 @@ impl<T: Row<T>> QuerySearchManager<T> {
         Some(CompositeKey(key_parts))
     }
 
-    pub fn search(&self, table_name: &str, ops: &QueryOps) -> Result<Vec<T>, QueryError> {
+    pub fn search(
+        &self,
+        table_name: &str,
+        ops: &QueryOps,
+    ) -> Result<(Vec<T>, Arc<Table>), QueryError> {
         let get_table_shard = self
             .table_shards
             .get(table_name)
@@ -187,7 +192,7 @@ impl<T: Row<T>> QuerySearchManager<T> {
             results.push(T::from(&data))
         }
 
-        Ok(results)
+        Ok((results, get_table_shard.table.clone()))
     }
 }
 
@@ -361,7 +366,7 @@ mod test {
 
         tbl.temps.reconcile_all();
 
-        let results = search_manager.search("users", &ops).unwrap();
+        let (results, _) = search_manager.search("users", &ops).unwrap();
         let row_0 = &results[0];
 
         let col = tbl.table.get_column("user_name").unwrap();

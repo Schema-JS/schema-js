@@ -1,3 +1,6 @@
+use crate::manager::task::Task;
+use crate::manager::task_duration::TaskDuration;
+use crate::manager::SchemeJsManager;
 use crate::snapshot;
 use anyhow::{bail, Error, Result};
 use deno_core::_ops::RustToV8;
@@ -20,6 +23,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 use walkdir::{DirEntry, WalkDir};
 
 pub struct SchemeJsRuntime {
@@ -91,6 +95,7 @@ impl SchemeJsRuntime {
             config: config.clone(),
         });
         let mut engine = SchemeJsEngine::new(data_path.clone(), config);
+
         Self::load(&config_opts, &mut js_runtime, &folder_path, &mut engine)
             .await
             .unwrap();
@@ -105,6 +110,27 @@ impl SchemeJsRuntime {
 
         let mut internal_manager = Arc::new(InternalManager::new(engine.clone()));
         internal_manager.init();
+
+        {
+            let mut manager = SchemeJsManager::new(engine.clone());
+            manager.add_task(Task::new(
+                "1".to_string(),
+                Box::new(move |rt| {
+                    let engine = rt.write().unwrap();
+                    for db in engine.databases.iter() {
+                        let query_manager = &db.query_manager;
+                        for table in query_manager.table_names.read().unwrap().iter() {
+                            let table = query_manager.tables.get(table).unwrap();
+                            table.temps.reconcile_all();
+                        }
+                    }
+                    Ok(())
+                }),
+                TaskDuration::Defined(Duration::from_millis(250)),
+            ));
+
+            manager.start_tasks();
+        }
 
         Ok(Self {
             js_runtime,
@@ -376,6 +402,7 @@ mod test {
                         let query_manager = &db.query_manager;
                         for table in query_manager.table_names.read().unwrap().iter() {
                             let table = query_manager.tables.get(table).unwrap();
+                            println!("Reconciling all");
                             table.temps.reconcile_all();
                         }
                     }

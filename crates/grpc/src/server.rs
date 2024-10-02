@@ -3,6 +3,8 @@ use crate::services::connection::connection_service::proto_connection_service_se
 use crate::services::connection::ConnectionService;
 use crate::services::query::insert::insert_service::proto_row_insert_service_server::ProtoRowInsertServiceServer;
 use crate::services::query::insert::InsertService;
+use crate::services::query::query_data::query_service::proto_query_service_server::ProtoQueryServiceServer;
+use crate::services::query::query_data::QueryService;
 use schemajs_internal::manager::InternalManager;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -39,9 +41,17 @@ impl GrpcServer {
 
         let insert_service = ProtoRowInsertServiceServer::new(InsertService::new(curr_db.clone()));
 
+        let query_service = ProtoQueryServiceServer::new(QueryService::new(curr_db.clone()));
+
         let _ = Server::builder()
             .add_service(InterceptorFor::new(
                 insert_service,
+                AuthInterceptor {
+                    engine: curr_db.clone(),
+                },
+            ))
+            .add_service(InterceptorFor::new(
+                query_service,
                 AuthInterceptor {
                     engine: curr_db.clone(),
                 },
