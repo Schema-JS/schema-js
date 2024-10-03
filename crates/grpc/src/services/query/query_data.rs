@@ -8,6 +8,7 @@ use crate::services::shared::shared::DataValue as GrpcDataValue;
 use crate::utils::common::{convert_to_grpc_value, find_database, from_grpc_ops_to_sjs_ops};
 use schemajs_internal::auth::types::UserContext;
 use schemajs_primitives::column::types::DataValue;
+use schemajs_query::row::Row;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tonic::{Request, Response, Status};
@@ -35,24 +36,29 @@ define_sjs_grpc_service!(QueryService, {
                     .search(&table_name, &qops)
                     .map_err(|e| Status::internal("Query could not be completed"))?;
                 let cols = &table.columns;
+                // Refactor closure to handle errors
                 let map_rows: Vec<HashMap<String, GrpcDataValue>> = rows
                     .into_iter()
-                    .map(|r| {
-                        let val = r.value.value.as_object().unwrap();
-                        val.iter()
-                            .map(|(col, val)| {
-                                let grpc_val = convert_to_grpc_value(DataValue::from((
-                                    cols.get(col).unwrap(),
-                                    val,
-                                )));
+                    .filter_map(|r| {
+                        match r.to_map() {
+                            Ok(val) => Some(
+                                val.iter()
+                                    .map(|(col, val)| {
+                                        let grpc_val = convert_to_grpc_value(val);
 
-                                let data_val = GrpcDataValue {
-                                    value_type: Some(grpc_val),
-                                };
+                                        let data_val = GrpcDataValue {
+                                            value_type: Some(grpc_val),
+                                        };
 
-                                (col.clone(), data_val)
-                            })
-                            .collect::<HashMap<String, GrpcDataValue>>()
+                                        (col.clone(), data_val)
+                                    })
+                                    .collect::<HashMap<String, GrpcDataValue>>(),
+                            ),
+                            Err(_) => {
+                                // Skip this row if it couldn't be deserialized
+                                None
+                            }
+                        }
                     })
                     .collect();
 

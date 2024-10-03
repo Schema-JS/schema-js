@@ -95,7 +95,7 @@ impl RowBuilder<RowJson> for RowJson {
 
 impl Row<RowJson> for RowJson {
     fn get_table(&self) -> Arc<Table> {
-        todo!()
+        self.table.clone()
     }
 
     fn to_map(&self) -> Result<HashMap<String, DataValue>, RowSerializationError> {

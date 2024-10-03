@@ -25,13 +25,13 @@ pub fn convert_to_data_value(val: ValueType) -> DataValue {
     }
 }
 
-pub fn convert_to_grpc_value(val: DataValue) -> ValueType {
-    match val {
-        DataValue::Null => ValueType::NullValue(true),
-        DataValue::Uuid(u) => ValueType::UuidValue(u.to_string()),
-        DataValue::String(s) => ValueType::StringValue(s),
-        DataValue::Boolean(b) => ValueType::BoolValue(b),
-        DataValue::Number(n) => ValueType::NumberValue(n.as_f64().unwrap() as f32),
+pub fn convert_to_grpc_value(val: &DataValue) -> ValueType {
+    match &val {
+        &DataValue::Null => ValueType::NullValue(true),
+        &DataValue::Uuid(u) => ValueType::UuidValue(u.to_string()),
+        &DataValue::String(s) => ValueType::StringValue(s.clone()),
+        &DataValue::Boolean(b) => ValueType::BoolValue(b.clone()),
+        &DataValue::Number(n) => ValueType::NumberValue(n.as_f64().unwrap() as f32),
     }
 }
 

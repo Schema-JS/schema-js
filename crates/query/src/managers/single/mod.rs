@@ -3,7 +3,6 @@ pub mod table_shard;
 use crate::errors::QueryError;
 use crate::managers::single::table_shard::TableShard;
 use crate::row::Row;
-use crate::row_json::{RowData, RowJson};
 use crate::search::search_manager::QuerySearchManager;
 use chashmap::CHashMap;
 use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
