@@ -117,18 +117,23 @@ impl AuthManager {
             let _ = db
                 .query_manager
                 .raw_insert(
-                    &mut [RowJson::from(RowData {
-                        table: INTERNAL_USER_TABLE_NAME.to_string(),
-                        value: serde_json::to_value(create_user(
-                            scheme_username,
-                            default_scheme.password.clone(),
-                            true,
-                            true,
-                            vec![],
-                            default_scheme_name.to_string(),
-                        ))
-                        .unwrap(),
-                    })],
+                    &mut [RowJson {
+                        table: db
+                            .query_manager
+                            .get_table(INTERNAL_USER_TABLE_NAME)
+                            .unwrap(),
+                        value: RowData {
+                            value: serde_json::to_value(create_user(
+                                scheme_username,
+                                default_scheme.password.clone(),
+                                true,
+                                true,
+                                vec![],
+                                default_scheme_name.to_string(),
+                            ))
+                            .unwrap(),
+                        },
+                    }],
                     true,
                 )
                 .unwrap();
@@ -136,7 +141,7 @@ impl AuthManager {
     }
 
     fn search_user(db: &EngineDb, scheme_username: &String) -> Option<RowJson> {
-        let (users, _) = db
+        let users = db
             .query_manager
             .search_manager
             .search(

@@ -120,23 +120,17 @@ impl<T: Row<T>> SingleQueryManager<T> {
     ) -> Result<Option<Uuid>, QueryError> {
         let mut rows: Vec<T> = data
             .into_iter()
-            .map(|e| T::from_map(e.0, e.1).map_err(|_| QueryError::InvalidInsertion))
+            .map(|e| {
+                let table = self
+                    .tables
+                    .get(&e.0)
+                    .ok_or_else(|| QueryError::InvalidTable(e.0.clone()))?
+                    .table
+                    .clone();
+                T::from_map(table, e.1).map_err(|_| QueryError::InvalidInsertion)
+            })
             .collect::<Result<Vec<_>, _>>()?;
         self.raw_insert(&mut rows, master_insert)
-    }
-
-    pub fn insert_serializable<R>(
-        &self,
-        table_name: &str,
-        row: R,
-    ) -> Result<Option<Uuid>, QueryError>
-    where
-        R: Serialize,
-    {
-        let row = T::from_serializable(table_name.to_string(), row)
-            .map_err(|e| QueryError::InvalidSerialization)?;
-
-        self.insert(row)
     }
 
     /// Inserts a row in the first available temporary shard.
@@ -155,8 +149,8 @@ impl<T: Row<T>> SingleQueryManager<T> {
     /// query_manager.register_table(Table::new("users"));
     ///
     /// let uuid = query_manager.insert(RowJson {
+    ///   table: query_manager.get_table("users").unwrap(),
     ///   value: RowData {
-    ///     table: "users".to_string(),
     ///     value: Default::default()
     ///    }
     /// });
@@ -242,5 +236,9 @@ impl<T: Row<T>> SingleQueryManager<T> {
         }
 
         Ok(id)
+    }
+
+    pub fn get_table(&self, table_name: &str) -> Option<Arc<Table>> {
+        self.tables.get(table_name).map(|e| e.table.clone())
     }
 }

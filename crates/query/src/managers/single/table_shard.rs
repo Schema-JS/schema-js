@@ -151,7 +151,7 @@ impl<T: Row<T>> TableShard<T> {
         let mut index_ordered_items: HashMap<String, Vec<(IndexKeyType, u64)>> = HashMap::new();
 
         for row in data {
-            let row_t = T::from(&row.data);
+            let row_t = T::from_slice(table.clone(), &row.data);
             for index in &table.indexes {
                 let mut can_index = false;
                 let mut composite_key_vals: Vec<(String, String)> = vec![];

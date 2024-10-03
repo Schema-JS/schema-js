@@ -84,7 +84,7 @@ mod test {
     use schemajs_primitives::column::types::{DataTypes, DataValue};
     use schemajs_primitives::column::Column;
     use schemajs_primitives::table::Table;
-    use schemajs_query::row::Row;
+    use schemajs_query::row::{Row, RowBuilder};
     use schemajs_query::row_json::{RowData, RowJson};
     use serde_json::json;
     use std::collections::HashMap;
@@ -144,13 +144,11 @@ mod test {
         let ref_shard1 = Arc::clone(&arc);
         let thread_1 = thread::spawn(move || {
             let mut writer = ref_shard1.write().unwrap();
-            writer
-                .find_by_name_ref("rust-test-random")
-                .unwrap()
-                .query_manager
+            let db = writer.find_by_name_ref("rust-test-random").unwrap();
+            db.query_manager
                 .insert(RowJson {
+                    table: db.query_manager.get_table("users").unwrap(),
                     value: RowData {
-                        table: "users".to_string(),
                         value: json!({
                             "_uid": "97ad4bba-98c5-4a9e-80d8-6bf6302fb883",
                             "id": "1"
@@ -163,13 +161,11 @@ mod test {
         let ref_shard2 = Arc::clone(&arc);
         let thread_2 = thread::spawn(move || {
             let mut writer = ref_shard2.write().unwrap();
-            writer
-                .find_by_name_ref("rust-test-random")
-                .unwrap()
-                .query_manager
+            let db = writer.find_by_name_ref("rust-test-random").unwrap();
+            db.query_manager
                 .insert(RowJson {
+                    table: db.query_manager.get_table("users").unwrap(),
                     value: RowData {
-                        table: "users".to_string(),
                         value: json!({
                             "_uid": "2ec92148-646d-4521-974f-b4a6d422c195",
                             "id": "2"
@@ -192,8 +188,8 @@ mod test {
             let a = tbl.data.read().unwrap().get_element(0).unwrap();
             let b = tbl.data.read().unwrap().get_element(1).unwrap();
 
-            let a = RowJson::from(a.as_slice());
-            let b = RowJson::from(b.as_slice());
+            let a = RowJson::from_slice(tbl.table.clone(), a.as_slice());
+            let b = RowJson::from_slice(tbl.table.clone(), b.as_slice());
 
             assert_eq!(
                 a.get_value(tbl.table.get_column("id").unwrap()).unwrap(),

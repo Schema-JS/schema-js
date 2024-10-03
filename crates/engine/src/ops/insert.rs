@@ -26,14 +26,15 @@ pub async fn op_engine_insert_row(
         db.query_manager.clone()
     };
 
-    let insert = query_manager.insert(RowJson::from(RowData {
-        table: table_name,
-        value: row,
-    }));
+    let table = query_manager.get_table(&table_name);
+    if let Some(table) = table {
+        let insert = query_manager.insert(RowJson {
+            table,
+            value: RowData { value: row },
+        });
 
-    if insert.is_err() {
-        println!("Error");
+        return insert;
     }
 
-    insert
+    return Err(QueryError::InvalidInsertion);
 }

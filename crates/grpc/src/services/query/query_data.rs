@@ -28,7 +28,8 @@ define_sjs_grpc_service!(QueryService, {
             let query_ops = from_grpc_ops_to_sjs_ops(op);
             println!("{:?}", query_ops);
             if let Ok(qops) = query_ops {
-                let (rows, table) = db
+                let table = db.query_manager.get_table(&table_name).unwrap();
+                let rows = db
                     .query_manager
                     .search_manager
                     .search(&table_name, &qops)

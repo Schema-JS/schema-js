@@ -172,11 +172,7 @@ impl<T: Row<T>> QuerySearchManager<T> {
         Some(CompositeKey(key_parts))
     }
 
-    pub fn search(
-        &self,
-        table_name: &str,
-        ops: &QueryOps,
-    ) -> Result<(Vec<T>, Arc<Table>), QueryError> {
+    pub fn search(&self, table_name: &str, ops: &QueryOps) -> Result<Vec<T>, QueryError> {
         let get_table_shard = self
             .table_shards
             .get(table_name)
@@ -189,10 +185,10 @@ impl<T: Row<T>> QuerySearchManager<T> {
         for pointer in pointers {
             let tbl_data = get_table_shard.data.read().unwrap();
             let data = tbl_data.get_element(pointer as usize).unwrap();
-            results.push(T::from(&data))
+            results.push(T::from_slice(get_table_shard.table.clone(), &data))
         }
 
-        Ok((results, get_table_shard.table.clone()))
+        Ok(results)
     }
 }
 
@@ -256,88 +252,102 @@ mod test {
 
         query_manager.register_table(tbl);
 
+        let table = query_manager.get_table("users").unwrap();
+
         let row_1 = query_manager
-            .insert(RowJson::from(RowData {
-                table: String::from("users"),
-                value: serde_json::json!({
-                    "_uid": "0874d926-52a9-43e7-b682-9d7c5ec62b30",
-                    "user_id": "1",
-                    "user_email": "email@outlook.com",
-                    "user_country": "US",
-                    "user_age": "20",
-                    "user_name": "andreespirela"
-                }),
-            }))
+            .insert(RowJson {
+                table: table.clone(),
+                value: RowData {
+                    value: serde_json::json!({
+                        "_uid": "0874d926-52a9-43e7-b682-9d7c5ec62b30",
+                        "user_id": "1",
+                        "user_email": "email@outlook.com",
+                        "user_country": "US",
+                        "user_age": "20",
+                        "user_name": "andreespirela"
+                    }),
+                },
+            })
             .unwrap();
 
         let row_2 = query_manager
-            .insert(RowJson::from(RowData {
-                table: String::from("users"),
-                value: serde_json::json!({
-                    "_uid": "933a79e1-4d60-47b4-8f9d-2ee12ec75e37",
-                    "user_id": "2",
-                    "user_email": "email2@outlook.com",
-                    "user_country": "US",
-                    "user_age": "21",
-                    "user_name": "Veronica"
-                }),
-            }))
+            .insert(RowJson {
+                table: table.clone(),
+                value: RowData {
+                    value: serde_json::json!({
+                        "_uid": "933a79e1-4d60-47b4-8f9d-2ee12ec75e37",
+                        "user_id": "2",
+                        "user_email": "email2@outlook.com",
+                        "user_country": "US",
+                        "user_age": "21",
+                        "user_name": "Veronica"
+                    }),
+                },
+            })
             .unwrap();
 
         let row_3 = query_manager
-            .insert(RowJson::from(RowData {
-                table: String::from("users"),
-                value: serde_json::json!({
-                    "_uid": "968af9b6-c325-4c2a-ac35-b9f82429fcdf",
-                    "user_id": "3",
-                    "user_email": "email3@outlook.com",
-                    "user_country": "US",
-                    "user_age": "21",
-                    "user_name": "superman"
-                }),
-            }))
+            .insert(RowJson {
+                table: table.clone(),
+                value: RowData {
+                    value: serde_json::json!({
+                        "_uid": "968af9b6-c325-4c2a-ac35-b9f82429fcdf",
+                        "user_id": "3",
+                        "user_email": "email3@outlook.com",
+                        "user_country": "US",
+                        "user_age": "21",
+                        "user_name": "superman"
+                    }),
+                },
+            })
             .unwrap();
 
         let row_4 = query_manager
-            .insert(RowJson::from(RowData {
-                table: String::from("users"),
-                value: serde_json::json!({
-                    "_uid": "c455eb4e-82ea-4974-bd74-0ea449c16d2c",
-                    "user_id": "4",
-                    "user_email": "email3@outlook.com",
-                    "user_country": "US",
-                    "user_age": "19",
-                    "user_name": "Luis"
-                }),
-            }))
+            .insert(RowJson {
+                table: table.clone(),
+                value: RowData {
+                    value: serde_json::json!({
+                        "_uid": "c455eb4e-82ea-4974-bd74-0ea449c16d2c",
+                        "user_id": "4",
+                        "user_email": "email3@outlook.com",
+                        "user_country": "US",
+                        "user_age": "19",
+                        "user_name": "Luis"
+                    }),
+                },
+            })
             .unwrap();
 
         let row_5 = query_manager
-            .insert(RowJson::from(RowData {
-                table: String::from("users"),
-                value: serde_json::json!({
-                    "_uid": "0977848d-18a9-49ec-a4e6-da51df3ae11d",
-                    "user_id": "5",
-                    "user_email": "email10@outlook.com",
-                    "user_country": "US",
-                    "user_age": "22",
-                    "user_name": "Flash"
-                }),
-            }))
+            .insert(RowJson {
+                table: table.clone(),
+                value: RowData {
+                    value: serde_json::json!({
+                        "_uid": "0977848d-18a9-49ec-a4e6-da51df3ae11d",
+                        "user_id": "5",
+                        "user_email": "email10@outlook.com",
+                        "user_country": "US",
+                        "user_age": "22",
+                        "user_name": "Flash"
+                    }),
+                },
+            })
             .unwrap();
 
         let row_6 = query_manager
-            .insert(RowJson::from(RowData {
-                table: String::from("users"),
-                value: serde_json::json!({
-                    "_uid": "a44fbf77-7a62-46a0-ae81-c6f75048ab34",
-                    "user_id": "6",
-                    "user_email": "email10@outlook.com",
-                    "user_country": "AR",
-                    "user_age": "22",
-                    "user_name": "Door"
-                }),
-            }))
+            .insert(RowJson {
+                table: table.clone(),
+                value: RowData {
+                    value: serde_json::json!({
+                        "_uid": "a44fbf77-7a62-46a0-ae81-c6f75048ab34",
+                        "user_id": "6",
+                        "user_email": "email10@outlook.com",
+                        "user_country": "AR",
+                        "user_age": "22",
+                        "user_name": "Door"
+                    }),
+                },
+            })
             .unwrap();
 
         let tables = query_manager.tables.clone();
@@ -366,7 +376,7 @@ mod test {
 
         tbl.temps.reconcile_all();
 
-        let (results, _) = search_manager.search("users", &ops).unwrap();
+        let results = search_manager.search("users", &ops).unwrap();
         let row_0 = &results[0];
 
         let col = tbl.table.get_column("user_name").unwrap();

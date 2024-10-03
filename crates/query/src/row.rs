@@ -1,16 +1,20 @@
-use crate::serializer::RowSerializer;
+use crate::serializer::{RowSerializationError, RowSerializer};
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::column::Column;
+use schemajs_primitives::table::Table;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::Arc;
 
 pub trait RowBuilder<T> {
-    fn from_serializable<R>(table_name: String, data: R) -> Result<T, ()>
+    fn from_slice(table: Arc<Table>, slice: &[u8]) -> T;
+
+    fn from_serializable<R>(table: Arc<Table>, data: R) -> Result<T, ()>
     where
         R: Serialize;
 
-    fn from_map(table_name: String, data: HashMap<String, DataValue>) -> Result<T, ()>;
+    fn from_map(table: Arc<Table>, data: HashMap<String, DataValue>) -> Result<T, ()>;
 }
 
 /// The `Row` trait defines the core operations that any row in the database must implement.
@@ -23,7 +27,11 @@ pub trait RowBuilder<T> {
 /// - `get_value`: Retrieves the value of a specific column from the row, returning `Option<DataValue>`.
 /// - `get_table_name`: Returns the name of the table to which the row belongs as a `String`.
 /// - `validate`: Validates the row, ensuring it adheres to certain rules or constraints, returning a `bool` indicating whether the row is valid.
-pub trait Row<T>: RowSerializer<T> + for<'a> From<&'a [u8]> + RowBuilder<T> {
+pub trait Row<T>: RowSerializer<T> + RowBuilder<T> {
+    fn get_table(&self) -> Arc<Table>;
+
+    fn to_map(&self) -> Result<HashMap<String, DataValue>, RowSerializationError>;
+
     /// Retrieves the value from a specific column in the row.
     ///
     /// # Parameters:

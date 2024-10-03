@@ -1,8 +1,10 @@
 use crate::serializer::{RowSerializationError, RowSerializer};
 use borsh::{BorshDeserialize, BorshSerialize};
+use schemajs_primitives::table::Table;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Write;
+use std::sync::Arc;
 
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 pub enum BorshJsonValue {
@@ -55,15 +57,10 @@ pub struct BorshRowSerializer;
 
 impl RowSerializer<Value> for BorshRowSerializer {
     fn serialize(&self) -> Result<Vec<u8>, RowSerializationError> {
-        Ok(vec![])
-        /* let borsh_value: BorshJsonValue = self.into();
-        borsh::to_vec(&borsh_value)
-            .map_err(|e| RowSerializationError::SerializationError(e.to_string()))*/
+        todo!()
     }
 
-    fn deserialize(&self, data: &[u8]) -> Result<Value, RowSerializationError> {
-        let borsh_value = BorshJsonValue::try_from_slice(data)
-            .map_err(|e| RowSerializationError::DeserializationError(e.to_string()))?;
-        Ok(borsh_value.into())
+    fn deserialize(&self, table: Arc<Table>, data: &[u8]) -> Result<Value, RowSerializationError> {
+        todo!()
     }
 }

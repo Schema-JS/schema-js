@@ -1,6 +1,8 @@
 pub mod borsh;
 
+use schemajs_primitives::table::Table;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use thiserror::Error;
 
 /// `RowSerializationError` is an enum that defines two types of errors that can occur
@@ -40,5 +42,5 @@ pub trait RowSerializer<V>: std::fmt::Debug + Send + Sync + 'static {
     /// # Returns
     /// - `Ok(V)` if deserialization succeeds.
     /// - `Err(RowSerializationError)` if deserialization fails.
-    fn deserialize(&self, data: &[u8]) -> Result<V, RowSerializationError>;
+    fn deserialize(&self, table: Arc<Table>, data: &[u8]) -> Result<V, RowSerializationError>;
 }
