@@ -1,7 +1,7 @@
 use crate::table::Table;
 use std::collections::HashMap;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Database {
     pub name: String,
     pub tables: HashMap<String, Table>,

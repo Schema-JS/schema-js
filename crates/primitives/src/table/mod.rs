@@ -4,9 +4,9 @@ use crate::column::types::DataTypes;
 use crate::column::Column;
 use crate::index::Index;
 use crate::table::metadata::TableMetadata;
+use schemajs_helpers::helper::{Helper, SjsHelpersContainer};
 use schemajs_index::index_type::IndexType;
 use serde::{Deserialize, Serialize};
-use std::cell::LazyCell;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
@@ -51,11 +51,14 @@ impl Table {
             if col_name == "_uid" {
                 continue;
             }
-            self.indexes.push(Index {
-                name: format!("{}_indx", col_name),
-                members: vec![col_name.to_string()],
-                index_type: IndexType::Hash,
-            });
+
+            if col.default_index.unwrap_or(false) {
+                self.indexes.push(Index {
+                    name: format!("{}_indx", col_name),
+                    members: vec![col_name.to_string()],
+                    index_type: IndexType::Hash,
+                });
+            }
         }
 
         self.indexes.push(Self::get_internal_uid_index().clone());
@@ -77,14 +80,6 @@ impl Table {
     pub fn add_column(mut self, column: Column) -> Self {
         if column.primary_key {
             self.primary_key = column.name.clone();
-        }
-
-        if column.default_index.unwrap() {
-            self.indexes.push(Index {
-                name: format!("{}_indx", &column.name),
-                members: vec![column.name.to_string()],
-                index_type: IndexType::Hash,
-            });
         }
 
         self.columns.insert(column.name.clone(), column);

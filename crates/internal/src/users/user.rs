@@ -21,7 +21,7 @@ pub struct User {
 pub const INTERNAL_USER_TABLE_NAME: &str = "sjs_users";
 
 pub(crate) static INTERNAL_USER_TABLE: LazyLock<Table> = LazyLock::new(|| {
-    Table::new(INTERNAL_USER_TABLE_NAME)
+    let mut tbl = Table::new(INTERNAL_USER_TABLE_NAME)
         .add_column(Column::new("identifier", DataTypes::String).set_required(true))
         .add_column(
             Column::new("hashed_password", DataTypes::String)
@@ -41,7 +41,11 @@ pub(crate) static INTERNAL_USER_TABLE: LazyLock<Table> = LazyLock::new(|| {
                 .set_default_index(false),
         )
         .add_column(Column::new("roles", DataTypes::String).set_default_index(false))
-        .set_internal(true)
+        .set_internal(true);
+
+    tbl.init();
+
+    tbl
 });
 
 pub fn create_user(

@@ -4,13 +4,16 @@ use crate::manager::SchemeJsManager;
 use crate::snapshot;
 use anyhow::{bail, Error, Result};
 use deno_core::_ops::RustToV8;
+use deno_core::serde_v8::Value;
 use deno_core::url::Url;
+use deno_core::v8::{GetPropertyNamesArgsBuilder, KeyCollectionMode, Local};
 use deno_core::{
     located_script_name, serde_v8, v8, Extension, JsRuntime, ModuleCodeString, ModuleId,
     ModuleSpecifier, RuntimeOptions,
 };
 use schemajs_config::SchemeJsConfig;
 use schemajs_engine::engine::SchemeJsEngine;
+use schemajs_helpers::helper::{Helper, HelperType, SjsTableHelpers};
 use schemajs_internal::get_internal_tables;
 use schemajs_internal::manager::InternalManager;
 use schemajs_module_loader::ts_module_loader::TypescriptModuleLoader;
@@ -19,7 +22,7 @@ use schemajs_primitives::table::Table;
 use schemajs_workers::context::{MainWorkerRuntimeOpts, WorkerRuntimeOpts};
 use serde::{Deserialize, Serialize};
 use std::cell::{RefCell, RefMut};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
@@ -34,6 +37,7 @@ pub struct SchemeJsRuntime {
     pub current_folder: PathBuf,
     pub engine: Arc<RwLock<SchemeJsEngine>>,
     pub internal_manager: Arc<InternalManager>,
+    pub helpers: Arc<SjsTableHelpers>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +73,7 @@ impl SchemeJsRuntime {
             schemajs_primitives::sjs_primitives::init_ops(),
             schemajs_core::sjs_core::init_ops(),
             schemajs_engine::sjs_engine::init_ops(),
+            schemajs_helpers::sjs_helpers::init_ops(),
         ];
 
         let runtime_opts = RuntimeOptions {
@@ -140,6 +145,7 @@ impl SchemeJsRuntime {
             engine,
             data_path_folder: data_path.clone(),
             internal_manager,
+            helpers: Arc::new(SjsTableHelpers(HashMap::new())),
         })
     }
 
@@ -190,31 +196,103 @@ impl SchemeJsRuntime {
 
         let mut table = {
             let mod_scope = js_runtime.get_module_namespace(mod_id)?;
-            let scope = &mut js_runtime.handle_scope();
             {
-                let mod_obj = mod_scope.open(scope).to_object(scope).unwrap();
-                let default_function_key = v8::String::new(scope, "default").unwrap();
-                let func_obj = mod_obj.get(scope, default_function_key.into()).unwrap();
-                let func = v8::Local::<v8::Function>::try_from(func_obj)?;
-                let undefined = v8::undefined(scope);
+                let global = {
+                    let scope = &mut js_runtime.handle_scope();
+                    let mod_obj = mod_scope.open(scope).to_object(scope).unwrap();
+                    let default_function_key = v8::String::new(scope, "default").unwrap();
+                    let func_obj = mod_obj.get(scope, default_function_key.into()).unwrap();
+                    let func = v8::Local::<v8::Function>::try_from(func_obj)?;
+                    let undefined = v8::undefined(scope);
 
-                /// TODO: Handle this error
-                let mut exc = func.call(scope, undefined.into(), &[]).unwrap(); /*
-                                                                                .ok_or_else(Error::msg("Table could not be read"))?*/
+                    /// TODO: Handle this error
+                    let mut exc = func.call(scope, undefined.into(), &[]).unwrap(); /*
+                                                                                    .ok_or_else(Error::msg("Table could not be read"))?*/
 
-                let is_promise = exc.is_promise();
+                    let is_promise = exc.is_promise();
 
-                if is_promise {
-                    let promise = v8::Local::<v8::Promise>::try_from(exc).unwrap();
-                    match promise.state() {
-                        v8::PromiseState::Pending => {}
-                        v8::PromiseState::Fulfilled | v8::PromiseState::Rejected => {
-                            exc = promise.result(scope);
+                    if is_promise {
+                        let promise = v8::Local::<v8::Promise>::try_from(exc).unwrap();
+                        match promise.state() {
+                            v8::PromiseState::Pending => {}
+                            v8::PromiseState::Fulfilled | v8::PromiseState::Rejected => {
+                                exc = promise.result(scope);
+                            }
+                        }
+                    }
+
+                    let table = deno_core::serde_v8::from_v8::<Table>(scope, exc)?;
+
+                    (table, v8::Global::new(scope, exc))
+                };
+
+                let mut table = global.0;
+                let global = global.1;
+
+                {
+                    let global = { js_runtime.resolve(global).await? };
+
+                    let scope = &mut js_runtime.handle_scope();
+                    let table_obj_local = v8::Local::new(scope, global).to_object(scope);
+                    if let Some(state) = table_obj_local {
+                        let state_key = v8::String::new(scope, "helpers").unwrap().into();
+                        if let Some(queries_obj) = state.get(scope, state_key) {
+                            if let Some(obj) = queries_obj.to_object(scope) {
+                                let props = obj.get_own_property_names(
+                                    scope,
+                                    GetPropertyNamesArgsBuilder::new()
+                                        .mode(KeyCollectionMode::OwnOnly)
+                                        .build(),
+                                );
+                                let helper_indexes =
+                                    serde_v8::from_v8::<Vec<u32>>(scope, props.unwrap().into())?;
+                                let mut helpers: Vec<Helper> =
+                                    Vec::with_capacity(helper_indexes.capacity());
+
+                                {
+                                    for helper_indx in helper_indexes {
+                                        let helper = obj.get_index(scope, helper_indx);
+                                        if let Some(helper) = helper {
+                                            let helper_val = helper.to_object(scope).unwrap();
+
+                                            let (identifier_key, internal_type_key, cb_key) = (
+                                                v8::String::new(scope, "identifier")
+                                                    .unwrap()
+                                                    .into(),
+                                                v8::String::new(scope, "internalType")
+                                                    .unwrap()
+                                                    .into(),
+                                                v8::String::new(scope, "cb").unwrap().into(),
+                                            );
+
+                                            let (identifier, internal_type, cb) = (
+                                                helper_val.get(scope, identifier_key).unwrap(),
+                                                helper_val.get(scope, internal_type_key).unwrap(),
+                                                helper_val.get(scope, cb_key).unwrap(),
+                                            );
+
+                                            let identifier =
+                                                serde_v8::from_v8::<String>(scope, identifier)?;
+                                            let internal_type = serde_v8::from_v8::<HelperType>(
+                                                scope,
+                                                internal_type,
+                                            )?;
+                                            let cb = v8::Local::<v8::Function>::try_from(cb)?;
+                                            let global = v8::Global::new(scope, cb);
+                                            helpers.push(Helper {
+                                                identifier,
+                                                internal_type,
+                                                func: global,
+                                            });
+                                        }
+                                    }
+                                };
+                            }
                         }
                     }
                 }
 
-                deno_core::serde_v8::from_v8::<Table>(scope, exc)?
+                table
             }
         };
 

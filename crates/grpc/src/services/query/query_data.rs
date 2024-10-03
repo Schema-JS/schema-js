@@ -27,15 +27,12 @@ define_sjs_grpc_service!(QueryService, {
         let db = find_database(&self.db_manager, user_context)?;
         if let Some(op) = operation {
             let query_ops = from_grpc_ops_to_sjs_ops(op);
-            println!("{:?}", query_ops);
             if let Ok(qops) = query_ops {
-                let table = db.query_manager.get_table(&table_name).unwrap();
                 let rows = db
                     .query_manager
                     .search_manager
                     .search(&table_name, &qops)
                     .map_err(|e| Status::internal("Query could not be completed"))?;
-                let cols = &table.columns;
                 // Refactor closure to handle errors
                 let map_rows: Vec<HashMap<String, GrpcDataValue>> = rows
                     .into_iter()

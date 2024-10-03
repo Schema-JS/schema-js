@@ -5,4 +5,5 @@ export default function main() {
         .addColumn(new Column("username").string())
         .addColumn(new Column("password").string())
         .addColumn(new Column("enabled").boolean().withDefaultValue(true))
+        .addQuery("helloWorld", () => { let x = "hello"; })
 }

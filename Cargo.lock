@@ -288,6 +288,7 @@ dependencies = [
  "schemajs_config",
  "schemajs_core",
  "schemajs_engine",
+ "schemajs_helpers",
  "schemajs_internal",
  "schemajs_module_loader",
  "schemajs_primitives",
@@ -2688,6 +2689,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "schemajs_helpers"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "enum-as-inner",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "schemajs_index"
 version = "0.1.0"
 dependencies = [
@@ -2760,6 +2773,7 @@ version = "0.1.0"
 dependencies = [
  "deno_core",
  "enum-as-inner",
+ "schemajs_helpers",
  "schemajs_index",
  "serde",
  "serde_json",

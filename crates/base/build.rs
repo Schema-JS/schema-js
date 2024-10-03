@@ -17,6 +17,7 @@ mod schema_js_snapshot {
             schemajs_core::sjs_core::init_ops_and_esm(),
             schemajs_primitives::sjs_primitives::init_ops_and_esm(),
             schemajs_engine::sjs_engine::init_ops_and_esm(),
+            schemajs_helpers::sjs_helpers::init_ops_and_esm(),
         ];
         let snapshot = create_snapshot(
             CreateSnapshotOptions {
