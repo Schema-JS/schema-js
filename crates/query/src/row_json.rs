@@ -26,7 +26,7 @@ pub struct RowData {
 ///
 /// # Fields:
 /// - `value`: A `RowData` instance that encapsulates both the table name and the actual row data.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct RowJson {
     pub table: Arc<Table>,
     pub value: RowData,

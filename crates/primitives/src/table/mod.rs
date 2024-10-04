@@ -4,19 +4,17 @@ use crate::column::types::DataTypes;
 use crate::column::Column;
 use crate::index::Index;
 use crate::table::metadata::TableMetadata;
-use schemajs_helpers::helper::{Helper, SjsHelpersContainer};
 use schemajs_index::index_type::IndexType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Table {
     pub name: String,
     pub columns: HashMap<String, Column>,
     pub indexes: Vec<Index>,
     pub primary_key: String,
-    #[serde(skip_serializing, skip_deserializing)]
     pub metadata: TableMetadata,
 }
 

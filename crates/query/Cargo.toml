@@ -8,7 +8,7 @@ description = "We'll take care of this later"
 license = "MIT"
 
 [dependencies]
-serde = { workspace = true, features = ["rc"] }
+serde = { workspace = true }
 anyhow.workspace = true
 enum-as-inner.workspace = true
 schemajs_primitives = { version = "0.1.0", path = "../primitives" }
