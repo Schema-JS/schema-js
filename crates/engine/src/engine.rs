@@ -4,26 +4,34 @@ use anyhow::bail;
 use deno_core::ModuleSpecifier;
 use schemajs_config::SchemeJsConfig;
 use schemajs_dirs::create_scheme_js_folder;
+use schemajs_helpers::helper::HelperCall;
 use schemajs_primitives::table::Table;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use tokio::sync::mpsc::Sender;
 use walkdir::WalkDir;
 
 pub struct SchemeJsEngine {
     pub databases: Vec<Arc<EngineDb>>,
     pub data_path_dir: Option<PathBuf>,
     pub config: Arc<SchemeJsConfig>,
+    pub helper_tx: Sender<HelperCall>,
 }
 
 impl SchemeJsEngine {
-    pub fn new(data_path: Option<PathBuf>, config: Arc<SchemeJsConfig>) -> Self {
+    pub fn new(
+        data_path: Option<PathBuf>,
+        config: Arc<SchemeJsConfig>,
+        helper_tx: Sender<HelperCall>,
+    ) -> Self {
         create_scheme_js_folder(data_path.clone());
 
         Self {
             databases: vec![],
             data_path_dir: data_path,
             config,
+            helper_tx,
         }
     }
 

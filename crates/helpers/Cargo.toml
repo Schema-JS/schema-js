@@ -14,3 +14,5 @@ serde_json.workspace = true
 enum-as-inner.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+r2d2.workspace = true

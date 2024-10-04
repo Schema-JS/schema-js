@@ -1,5 +1,6 @@
 import * as SJsPrimitives from "ext:sjs_primitives/src/js/index.ts"
 import { insertRow } from "ext:sjs_engine/src/js/ops.ts";
+const core = globalThis.Deno.core;
 class SchemeJS {
 
     static get Table() {
@@ -16,6 +17,10 @@ class SchemeJS {
 
     static get insert() {
         return insertRow;
+    }
+
+    static print(msg: string) {
+        core.print(msg);
     }
 
 }

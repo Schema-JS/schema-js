@@ -1,5 +1,6 @@
 pub mod task;
 pub mod task_duration;
+pub mod tasks;
 
 use crate::manager::task::Task;
 use crate::manager::task_duration::TaskDuration;
@@ -40,7 +41,6 @@ impl SchemeJsManager {
             let engine = engine.clone();
             let running = running.clone();
             let cancel_token = self.cancellation_token.clone();
-            println!("Task detected");
             tokio::spawn(async move {
                 select! {
                     _ = cancel_token.cancelled() => {

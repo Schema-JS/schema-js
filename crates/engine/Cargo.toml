@@ -24,6 +24,7 @@ thiserror.workspace = true
 walkdir.workspace = true
 schemajs_query = { version = "0.1.0", path = "../query" }
 schemajs_config = { version = "0.1.0", path = "../config" }
+schemajs_helpers = { version = "0.1.0", path = "../helpers" }
 
 [dev-dependencies]
 flaky_test.workspace = true

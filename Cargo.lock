@@ -285,6 +285,7 @@ dependencies = [
  "anyhow",
  "deno_ast",
  "deno_core",
+ "r2d2",
  "schemajs_config",
  "schemajs_core",
  "schemajs_engine",
@@ -294,6 +295,8 @@ dependencies = [
  "schemajs_primitives",
  "schemajs_workers",
  "serde",
+ "serde_json",
+ "thiserror",
  "tokio",
  "tokio-util",
  "uuid",
@@ -2311,6 +2314,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "r2d2"
+version = "0.8.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51de85fb3fb6524929c8a2eb85e6b6d363de4e8c48f9e2c2eac4944abc181c93"
+dependencies = [
+ "log",
+ "parking_lot 0.12.3",
+ "scheduled-thread-pool",
+]
+
+[[package]]
 name = "radium"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2597,6 +2611,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "scheduled-thread-pool"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cbc66816425a074528352f5789333ecff06ca41b36b0b0efdfbb29edc391a19"
+dependencies = [
+ "parking_lot 0.12.3",
+]
+
+[[package]]
 name = "schemajs_config"
 version = "0.1.0"
 dependencies = [
@@ -2660,6 +2683,7 @@ dependencies = [
  "schemajs_config",
  "schemajs_data",
  "schemajs_dirs",
+ "schemajs_helpers",
  "schemajs_primitives",
  "schemajs_query",
  "serde",
@@ -2694,9 +2718,11 @@ version = "0.1.0"
 dependencies = [
  "deno_core",
  "enum-as-inner",
+ "r2d2",
  "serde",
  "serde_json",
  "thiserror",
+ "tokio",
  "uuid",
 ]
 

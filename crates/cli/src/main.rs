@@ -2,10 +2,12 @@ mod flags;
 
 use crate::flags::get_cli;
 use anyhow::Error;
-use base::runtime::WorkerContextInitOpts;
+use base::context::context::SjsContext;
+use base::runner::{SjsRunner, SjsRunnerConfig};
 use clap::ArgMatches;
 use schemajs_grpc::server::{GrpcServer, GrpcServerArgs};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 fn main() {
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -22,14 +24,14 @@ fn main() {
             Some(("start", sub_matches)) => {
                 let ip = sub_matches.get_one::<String>("ip").cloned().unwrap();
                 let config_file = sub_matches.get_one::<String>("config").cloned().unwrap();
-
-                let mut rt = base::runtime::SchemeJsRuntime::new(WorkerContextInitOpts {
+                let runner = SjsRunner::new(SjsRunnerConfig {
+                    max_helper_processing_capacity: 100,
+                    max_runtimes: 10,
                     config_path: PathBuf::from(config_file),
                     data_path: None,
-                })
-                .await
-                .unwrap();
-                let internal_manager = rt.internal_manager.clone();
+                });
+
+                let internal_manager = runner.sjs_context.internal_manager.clone();
 
                 let grpc_server = GrpcServer::new(GrpcServerArgs {
                     db_manager: internal_manager,
@@ -44,12 +46,5 @@ fn main() {
         };
 
         Ok(())
-
-        // let mut rt = base::runtime::SchemeJsRuntime::new(WorkerContextInitOpts {
-        //     config_path: PathBuf::from("/Users/andrespirela/Documents/workspace/pirela/schema-js/crates/base/test_cases/default-db/SchemeJS.toml"),
-        //     data_path: None,
-        // }).await.unwrap();
-        //
-        // Ok(())
     });
 }

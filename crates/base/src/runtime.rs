@@ -1,5 +1,7 @@
+use crate::context::context::SjsContext;
 use crate::manager::task::Task;
 use crate::manager::task_duration::TaskDuration;
+use crate::manager::tasks::get_all_internal_tasks;
 use crate::manager::SchemeJsManager;
 use crate::snapshot;
 use anyhow::{bail, Error, Result};
@@ -9,11 +11,11 @@ use deno_core::url::Url;
 use deno_core::v8::{GetPropertyNamesArgsBuilder, KeyCollectionMode, Local};
 use deno_core::{
     located_script_name, serde_v8, v8, Extension, JsRuntime, ModuleCodeString, ModuleId,
-    ModuleSpecifier, RuntimeOptions,
+    ModuleSpecifier, PollEventLoopOptions, RuntimeOptions,
 };
 use schemajs_config::SchemeJsConfig;
 use schemajs_engine::engine::SchemeJsEngine;
-use schemajs_helpers::helper::{Helper, HelperType, SjsTableHelpers};
+use schemajs_helpers::helper::{Helper, HelperCall, HelperType, SjsTableHelpers};
 use schemajs_internal::get_internal_tables;
 use schemajs_internal::manager::InternalManager;
 use schemajs_module_loader::ts_module_loader::TypescriptModuleLoader;
@@ -25,50 +27,20 @@ use std::cell::{RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use walkdir::{DirEntry, WalkDir};
 
 pub struct SchemeJsRuntime {
     pub js_runtime: JsRuntime,
-    pub config: WorkerRuntimeOpts,
-    pub config_file: PathBuf,
-    pub data_path_folder: Option<PathBuf>,
-    pub current_folder: PathBuf,
-    pub engine: Arc<RwLock<SchemeJsEngine>>,
-    pub internal_manager: Arc<InternalManager>,
-    pub helpers: Arc<SjsTableHelpers>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkerContextInitOpts {
-    pub config_path: PathBuf,
-    pub data_path: Option<PathBuf>,
+    pub ctx: Arc<SjsContext>,
+    pub table_helpers: Arc<SjsTableHelpers>,
+    pub busy: AtomicBool,
 }
 
 impl SchemeJsRuntime {
-    pub async fn new(opts: WorkerContextInitOpts) -> Result<Self> {
-        let WorkerContextInitOpts {
-            config_path,
-            data_path,
-        } = opts;
-
-        // Determine the base path by joining the current directory with the config path
-        let base_path = std::env::current_dir()?.join(&config_path);
-
-        // Determine the appropriate folder path and config file path
-        let (folder_path, config_file) = if base_path.is_dir() {
-            (base_path.clone(), base_path.join("SchemeJS.toml"))
-        } else {
-            let folder_path = base_path.parent().map_or_else(
-                || std::env::current_dir(),
-                |parent| Ok(parent.to_path_buf()),
-            )?;
-            (folder_path.clone(), base_path)
-        };
-
-        let config = Arc::new(SchemeJsConfig::new(config_file.clone())?);
-
+    pub async fn new(context: Arc<SjsContext>) -> Result<Self> {
         let extensions: Vec<Extension> = vec![
             schemajs_primitives::sjs_primitives::init_ops(),
             schemajs_core::sjs_core::init_ops(),
@@ -96,95 +68,80 @@ impl SchemeJsRuntime {
                 .expect("Failed to execute bootstrap script");
         }
 
-        let config_opts = WorkerRuntimeOpts::Main(MainWorkerRuntimeOpts {
-            config: config.clone(),
-        });
-        let mut engine = SchemeJsEngine::new(data_path.clone(), config);
+        {
+            if !context.is_loaded() {
+                Self::load(context.clone(), &mut js_runtime).await.unwrap();
+            }
+        }
 
-        Self::load(&config_opts, &mut js_runtime, &folder_path, &mut engine)
-            .await
-            .unwrap();
-
-        let engine = Arc::new(RwLock::new(engine));
         {
             // Put reference to engine
             let op_state_rc = js_runtime.op_state();
             let mut op_state = op_state_rc.borrow_mut();
-            op_state.put::<Arc<RwLock<SchemeJsEngine>>>(engine.clone());
+            op_state.put::<Arc<RwLock<SchemeJsEngine>>>(context.engine.clone());
         }
 
-        let mut internal_manager = Arc::new(InternalManager::new(engine.clone()));
-        internal_manager.init();
+        {
+            if !context.is_loaded() {
+                context.internal_manager.init();
+            }
+        }
 
         {
-            let mut manager = SchemeJsManager::new(engine.clone());
-            manager.add_task(Task::new(
-                "1".to_string(),
-                Box::new(move |rt| {
-                    let engine = rt.write().unwrap();
-                    for db in engine.databases.iter() {
-                        let query_manager = &db.query_manager;
-                        for table in query_manager.table_names.read().unwrap().iter() {
-                            let table = query_manager.tables.get(table).unwrap();
-                            table.temps.reconcile_all();
-                        }
-                    }
-                    Ok(())
-                }),
-                TaskDuration::Defined(Duration::from_millis(250)),
-            ));
+            // TODO: Move from here
 
-            manager.start_tasks();
+            if !context.is_loaded() {
+                let tasks = get_all_internal_tasks();
+                let mut task_manager = context.task_manager.write().unwrap();
+
+                for task in tasks {
+                    task_manager.add_task(task);
+                }
+
+                task_manager.start_tasks();
+            }
         }
 
         Ok(Self {
             js_runtime,
-            config: config_opts,
-            config_file,
-            current_folder: folder_path,
-            engine,
-            data_path_folder: data_path.clone(),
-            internal_manager,
-            helpers: Arc::new(SjsTableHelpers(HashMap::new())),
+            ctx: context,
+            table_helpers: Arc::new(SjsTableHelpers(HashMap::new())),
+            busy: AtomicBool::new(false),
         })
     }
 
-    pub async fn load(
-        config: &WorkerRuntimeOpts,
-        js_runtime: &mut JsRuntime,
-        current_folder: &PathBuf,
-        engine: &mut SchemeJsEngine,
-    ) -> Result<()> {
-        match &config {
-            WorkerRuntimeOpts::Main(conf) => {
-                let def_scheme_name = engine.config.default.clone().unwrap().scheme_name;
-                let mut databases = conf.config.workspace.databases.clone();
-                databases.push(def_scheme_name.clone());
-                let mut evaluated_paths = HashSet::new();
+    pub async fn load(ctx: Arc<SjsContext>, js_runtime: &mut JsRuntime) -> Result<()> {
+        let engine_arc = ctx.engine.clone();
+        let mut engine = engine_arc.write().unwrap();
 
-                for database_path in databases {
-                    let path = current_folder.join(&database_path);
+        let conf = ctx.config.clone();
+        let current_folder = ctx.current_folder.clone();
 
-                    if evaluated_paths.contains(&path) {
-                        continue;
-                    } else {
-                        evaluated_paths.insert(path.clone());
-                    }
+        let def_scheme_name = conf.default.clone().unwrap().scheme_name;
+        let mut databases = conf.workspace.databases.clone();
+        databases.push(def_scheme_name.clone());
+        let mut evaluated_paths = HashSet::new();
 
-                    let (scheme_name, table_specifiers) = engine.load_database_schema(&path)?;
-                    let mut tables = vec![];
-                    for table_specifier in table_specifiers {
-                        let (_, _, tbl) =
-                            Self::load_table(js_runtime, table_specifier).await.unwrap();
-                        tables.push(tbl);
-                    }
+        for database_path in databases {
+            let path = current_folder.join(&database_path);
 
-                    engine.register_tables(scheme_name.as_str(), tables);
-                }
-
-                Ok(())
+            if evaluated_paths.contains(&path) {
+                continue;
+            } else {
+                evaluated_paths.insert(path.clone());
             }
+
+            let (scheme_name, table_specifiers) = engine.load_database_schema(&path)?;
+            let mut tables = vec![];
+            for table_specifier in table_specifiers {
+                let (_, _, tbl) = Self::load_table(js_runtime, table_specifier).await.unwrap();
+                tables.push(tbl);
+            }
+
+            engine.register_tables(scheme_name.as_str(), tables);
         }
+
+        Ok(())
     }
 
     async fn load_table(
@@ -302,15 +259,57 @@ impl SchemeJsRuntime {
 
         Ok((specifier, mod_id, table))
     }
+
+    pub async fn call_helper(&mut self, helper_call: HelperCall) {
+        match helper_call {
+            HelperCall::CustomQuery {
+                identifier,
+                req,
+                table,
+            } => {
+                let helper = self
+                    .table_helpers
+                    .find_custom_query_helper(&table, &identifier);
+                if let Some(helper) = helper {
+                    let call = self.js_runtime.call(&helper.func);
+                    let result = self
+                        .js_runtime
+                        .with_event_loop_promise(call, PollEventLoopOptions::default())
+                        .await
+                        .unwrap();
+                    // let scope = &mut self.js_runtime.handle_scope();
+                    // let local = v8::Local::new(scope, result);
+                }
+            }
+            HelperCall::InsertHook { .. } => {}
+        }
+    }
+
+    // Method to release the lock
+    fn release_lock(&self) {
+        self.busy.store(false, Ordering::Release);
+    }
+
+    pub fn acquire_lock(&self) -> Result<(), ()> {
+        match self
+            .busy
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+        {
+            Ok(_) => Ok(()),
+            Err(_) => Err(()),
+        }
+    }
 }
 
 #[cfg(test)]
 mod test {
+    use crate::context::context::SjsContext;
     use crate::manager::task::{Task, TaskCallback};
     use crate::manager::task_duration::TaskDuration;
     use crate::manager::SchemeJsManager;
-    use crate::runtime::{SchemeJsRuntime, WorkerContextInitOpts};
+    use crate::runtime::SchemeJsRuntime;
     use deno_core::{located_script_name, serde_json, v8};
+    use schemajs_helpers::create_helper_channel;
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::time::Duration;
@@ -318,20 +317,22 @@ mod test {
 
     #[tokio::test]
     pub async fn test_runtime_config_as_folder() -> anyhow::Result<()> {
-        let create_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
-            config_path: PathBuf::from("./test_cases/default-db"),
-            data_path: None,
-        })
+        let (tx, rx) = create_helper_channel(1);
+        let create_rt = SchemeJsRuntime::new(Arc::new(SjsContext::new(
+            PathBuf::from("./test_cases/default-db"),
+            None,
+            tx,
+        )?))
         .await?;
 
         assert_eq!(
-            create_rt.current_folder,
+            create_rt.ctx.current_folder,
             std::env::current_dir()
                 .unwrap()
                 .join("./test_cases/default-db")
         );
         assert_eq!(
-            create_rt.config_file,
+            create_rt.ctx.config_file,
             std::env::current_dir()
                 .unwrap()
                 .join("./test_cases/default-db/SchemeJS.toml")
@@ -342,6 +343,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_runtime_insert() -> anyhow::Result<()> {
+        let (tx, rx) = create_helper_channel(1);
         let data_path = format!("./test_cases/data/{}", Uuid::new_v4().to_string());
         let data_path = std::env::current_dir()
             .unwrap()
@@ -351,10 +353,11 @@ mod test {
 
         let now = std::time::Instant::now();
         {
-            let mut create_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
-                config_path: PathBuf::from("./test_cases/default-db"),
-                data_path: Some(data_path.clone()),
-            })
+            let mut create_rt = SchemeJsRuntime::new(Arc::new(SjsContext::new(
+                PathBuf::from("./test_cases/default-db"),
+                Some(data_path.clone()),
+                tx,
+            )?))
             .await?;
 
             let num_inserts = 10_000;
@@ -385,6 +388,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_runtime_insert_file_persistence() -> anyhow::Result<()> {
+        let (tx, rx) = create_helper_channel(1);
         let data_path = format!("./test_cases/data/{}", Uuid::new_v4().to_string());
         let data_path = std::env::current_dir()
             .unwrap()
@@ -395,10 +399,11 @@ mod test {
 
         for _ in 0..2 {
             {
-                let mut create_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
-                    config_path: PathBuf::from("./test_cases/default-db"),
-                    data_path: Some(data_path.clone()),
-                })
+                let mut create_rt = SchemeJsRuntime::new(Arc::new(SjsContext::new(
+                    PathBuf::from("./test_cases/default-db"),
+                    Some(data_path.clone()),
+                    tx.clone(),
+                )?))
                 .await?;
 
                 let num_inserts = 5001;
@@ -424,14 +429,16 @@ mod test {
         let elapsed = now.elapsed();
         println!("Elapsed: {:.5?}", elapsed);
 
-        let mut last_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
-            config_path: PathBuf::from("./test_cases/default-db"),
-            data_path: Some(data_path.clone()),
-        })
+        let mut last_rt = SchemeJsRuntime::new(Arc::new(SjsContext::new(
+            PathBuf::from("./test_cases/default-db"),
+            Some(data_path.clone()),
+            tx,
+        )?))
         .await?;
 
         let val = {
-            let reader = last_rt.engine.read().unwrap();
+            let engine = last_rt.ctx.engine.clone();
+            let reader = engine.read().unwrap();
             let db = reader.find_by_name_ref("public").unwrap();
             let table = db.query_manager.tables.get("users").unwrap();
             let table_read = table.data.read().unwrap();
@@ -457,6 +464,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_runtime_insert_with_manager() -> anyhow::Result<()> {
+        let (tx, rx) = create_helper_channel(1);
         let data_path = format!("./test_cases/data/{}", Uuid::new_v4().to_string());
         let data_path = std::env::current_dir()
             .unwrap()
@@ -464,32 +472,12 @@ mod test {
         let now = std::time::Instant::now();
 
         {
-            let mut rt = SchemeJsRuntime::new(WorkerContextInitOpts {
-                config_path: PathBuf::from("./test_cases/default-db"),
-                data_path: Some(data_path.clone()),
-            })
+            let mut rt = SchemeJsRuntime::new(Arc::new(SjsContext::new(
+                PathBuf::from("./test_cases/default-db"),
+                Some(data_path.clone()),
+                tx,
+            )?))
             .await?;
-
-            let mut manager = SchemeJsManager::new(rt.engine.clone());
-
-            manager.add_task(Task::new(
-                "1".to_string(),
-                Box::new(move |rt| {
-                    let engine = rt.write().unwrap();
-                    for db in engine.databases.iter() {
-                        let query_manager = &db.query_manager;
-                        for table in query_manager.table_names.read().unwrap().iter() {
-                            let table = query_manager.tables.get(table).unwrap();
-                            println!("Reconciling all");
-                            table.temps.reconcile_all();
-                        }
-                    }
-                    Ok(())
-                }),
-                TaskDuration::Defined(Duration::from_millis(250)),
-            ));
-
-            // manager.start_tasks();
 
             let num_inserts = 9500;
             let mut script = String::new();
@@ -526,20 +514,22 @@ mod test {
 
     #[tokio::test]
     pub async fn test_runtime_config_as_file() -> anyhow::Result<()> {
-        let create_rt = SchemeJsRuntime::new(WorkerContextInitOpts {
-            config_path: PathBuf::from("./test_cases/default-db/CustomSchemeJS.toml"),
-            data_path: None,
-        })
+        let (tx, rx) = create_helper_channel(1);
+        let create_rt = SchemeJsRuntime::new(Arc::new(SjsContext::new(
+            PathBuf::from("./test_cases/default-db"),
+            None,
+            tx,
+        )?))
         .await?;
 
         assert_eq!(
-            create_rt.current_folder,
+            create_rt.ctx.current_folder,
             std::env::current_dir()
                 .unwrap()
                 .join("./test_cases/default-db")
         );
         assert_eq!(
-            create_rt.config_file,
+            create_rt.ctx.config_file,
             std::env::current_dir()
                 .unwrap()
                 .join("./test_cases/default-db/CustomSchemeJS.toml")
@@ -548,3 +538,5 @@ mod test {
         Ok(())
     }
 }
+
+unsafe impl Send for SchemeJsRuntime {}
