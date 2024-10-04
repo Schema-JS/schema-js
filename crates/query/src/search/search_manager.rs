@@ -391,4 +391,88 @@ mod test {
 
         println!("{}", res_name.to_string());
     }
+
+    fn get_user_table_for_drop_test() -> Table {
+        Table::new("users")
+            .add_column(Column::new("user_id", DataTypes::String).set_default_index(true))
+            .add_index(Index {
+                name: "user_id_indx".to_string(),
+                members: vec![String::from("user_id")],
+                index_type: IndexType::Hash,
+            })
+    }
+
+    #[tokio::test]
+    pub async fn test_search_manager_with_drop() {
+        let test_db = Uuid::new_v4().to_string();
+        let db_folder = create_scheme_js_db(None, test_db.as_str());
+        {
+            let query_manager = SingleQueryManager::new(test_db.clone());
+
+            let tbl = get_user_table_for_drop_test();
+
+            query_manager.register_table(tbl);
+
+            let table = query_manager.get_table("users").unwrap();
+            let row_1 = query_manager
+                .insert(RowJson {
+                    table: table.clone(),
+                    value: RowData {
+                        value: serde_json::json!({
+                            "user_id": "1"
+                        }),
+                    },
+                })
+                .unwrap();
+
+            let tables = query_manager.tables.clone();
+            let search_manager = QuerySearchManager::new(tables.clone());
+            let ops = QueryOps::Or(vec![QueryOps::And(vec![QueryOps::Condition(QueryVal {
+                key: "user_id".to_string(),
+                filter_type: "=".to_string(),
+                value: DataValue::String("1".to_string()),
+            })])]);
+
+            let tbl = tables.get("users").unwrap();
+
+            tbl.temps.reconcile_all();
+
+            let results = search_manager.search("users", &ops).unwrap();
+            let row_0 = &results[0];
+
+            let col = tbl.table.get_column("user_id").unwrap();
+
+            assert_eq!(
+                row_0.get_value(col).unwrap(),
+                DataValue::String("1".to_string())
+            );
+        }
+
+        println!("-------------");
+        println!("-------------");
+
+        {
+            let query_manager = SingleQueryManager::<RowJson>::new(test_db.clone());
+            let tbl = get_user_table_for_drop_test();
+            query_manager.register_table(tbl);
+            let tables = query_manager.tables.clone();
+            let search_manager = QuerySearchManager::new(tables.clone());
+            let ops = QueryOps::Or(vec![QueryOps::And(vec![QueryOps::Condition(QueryVal {
+                key: "user_id".to_string(),
+                filter_type: "=".to_string(),
+                value: DataValue::String("1".to_string()),
+            })])]);
+
+            let tbl = tables.get("users").unwrap();
+            let results = search_manager.search("users", &ops).unwrap();
+            let row_0 = &results[0];
+
+            let col = tbl.table.get_column("user_id").unwrap();
+
+            assert_eq!(
+                row_0.get_value(col).unwrap(),
+                DataValue::String("1".to_string())
+            );
+        }
+    }
 }

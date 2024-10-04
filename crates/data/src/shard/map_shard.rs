@@ -82,22 +82,21 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
     }
 
     pub fn extract_shard_signature(path: PathBuf) -> Option<(usize, String, PathBuf)> {
-        if let Some(name) = path.file_name() {
-            let name_str = name.to_string_lossy();
-            let parts: Vec<&str> = name_str
-                .split('.')
-                .next()
-                .unwrap_or("")
-                .split('_')
-                .collect();
-            if parts.len() == 3 {
-                if let Ok(number) = parts[2].parse::<usize>() {
-                    return Some((number, parts[1].to_string(), path));
-                }
-            }
+        // Extract the filename from the path
+        let file_name = path.file_name()?.to_string_lossy();
+
+        // Split the filename by underscore and ensure we have at least three parts
+        let parts: Vec<&str> = file_name.split('.').next()?.split('_').collect();
+        if parts.len() < 3 {
+            return None;
         }
 
-        None
+        // Try parsing the last part as the number and extract the uuid from the second-to-last part
+        let number = parts.last()?.parse::<usize>().ok()?;
+        let uuid = parts.get(parts.len() - 2)?.to_string();
+
+        // Return the tuple containing (number, uuid, path)
+        Some((number, uuid, path))
     }
 
     pub fn insert_rows(&mut self, data: &[&[u8]]) -> usize {

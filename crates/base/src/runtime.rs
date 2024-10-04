@@ -331,8 +331,6 @@ impl SchemeJsRuntime {
                         }
                         Err(_) => {}
                     }
-                    // let scope = &mut self.js_runtime.handle_scope();
-                    // let local = v8::Local::new(scope, result);
                 }
             }
             HelperCall::InsertHook { .. } => {}

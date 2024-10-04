@@ -81,12 +81,8 @@ pub fn grpc_operation_to_sjs_op(operation: Operation) -> Result<QueryOps, ()> {
 }
 
 pub fn from_grpc_ops_to_sjs_ops(query_ops: GrpcQueryOps) -> Result<QueryOps, ()> {
-    println!("query_ops is some {}", query_ops.operation.is_some());
     match query_ops.operation {
         None => Err(()),
-        Some(op) => {
-            println!("grpc_operation_to_sjs_op");
-            grpc_operation_to_sjs_op(op)
-        }
+        Some(op) => grpc_operation_to_sjs_op(op),
     }
 }
