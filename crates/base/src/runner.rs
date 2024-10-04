@@ -72,6 +72,6 @@ mod runner_tests {
 
         tokio::time::sleep(Duration::from_secs(10)).await;
 
-        runner.helpers_manager.rx_thread.abort();
+        // runner.helpers_manager.rx_thread.abort();
     }
 }

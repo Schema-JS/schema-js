@@ -19,10 +19,13 @@ tokio.workspace = true
 walkdir.workspace = true
 deno_ast.workspace = true
 uuid = { version = "1.10.0", features = ["v4"] }
-tokio-util.workspace = true
+tokio-util = { workspace = true, features = ["full"] }
 r2d2.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true
+once_cell.workspace = true
+scopeguard.workspace = true
+dashmap.workspace = true
 
 [build-dependencies]
 schemajs_core = { version = "0.1.0", path = "../core" }

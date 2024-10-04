@@ -20,7 +20,7 @@ class SchemeJS {
     }
 
     static print(msg: string) {
-        core.print(msg);
+        core.ops.sjs_op_print(msg);
     }
 
 }

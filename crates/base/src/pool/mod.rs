@@ -17,7 +17,7 @@ impl SjsRuntimePool {
 
         let pool = r2d2::Pool::builder()
             .max_size(max_runtimes)
-            .min_idle(Some(1))
+            .min_idle(Some(0))
             .build(provider)
             .unwrap();
 

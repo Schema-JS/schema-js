@@ -16,3 +16,4 @@ uuid.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 r2d2.workspace = true
+dashmap.workspace = true

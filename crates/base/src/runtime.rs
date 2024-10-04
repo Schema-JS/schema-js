@@ -5,6 +5,7 @@ use crate::manager::tasks::get_all_internal_tasks;
 use crate::manager::SchemeJsManager;
 use crate::snapshot;
 use anyhow::{bail, Error, Result};
+use dashmap::DashMap;
 use deno_core::_ops::RustToV8;
 use deno_core::serde_v8::Value;
 use deno_core::url::Url;
@@ -15,7 +16,9 @@ use deno_core::{
 };
 use schemajs_config::SchemeJsConfig;
 use schemajs_engine::engine::SchemeJsEngine;
-use schemajs_helpers::helper::{Helper, HelperCall, HelperType, SjsTableHelpers};
+use schemajs_helpers::helper::{
+    Helper, HelperCall, HelperType, SjsHelpersContainer, SjsTableHelpers,
+};
 use schemajs_internal::get_internal_tables;
 use schemajs_internal::manager::InternalManager;
 use schemajs_module_loader::ts_module_loader::TypescriptModuleLoader;
@@ -30,7 +33,17 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use walkdir::{DirEntry, WalkDir};
+
+thread_local! {
+    // NOTE: Suppose we have met `.await` points while initializing a
+    // DenoRuntime. In that case, the current v8 isolate's thread-local state can be
+    // corrupted by a task initializing another DenoRuntime, so we must prevent this
+    // with a Semaphore.
+
+    static RUNTIME_CREATION_SEM: Arc<Semaphore> = Arc::new(Semaphore::new(1));
+}
 
 pub struct SchemeJsRuntime {
     pub js_runtime: JsRuntime,
@@ -68,10 +81,12 @@ impl SchemeJsRuntime {
                 .expect("Failed to execute bootstrap script");
         }
 
+        let table_helpers = Arc::new(SjsTableHelpers(DashMap::new()));
+
         {
-            if !context.is_loaded() {
-                Self::load(context.clone(), &mut js_runtime).await.unwrap();
-            }
+            Self::load(context.clone(), table_helpers.clone(), &mut js_runtime)
+                .await
+                .unwrap();
         }
 
         {
@@ -102,15 +117,21 @@ impl SchemeJsRuntime {
             }
         }
 
+        context.mark_loaded();
+
         Ok(Self {
             js_runtime,
             ctx: context,
-            table_helpers: Arc::new(SjsTableHelpers(HashMap::new())),
+            table_helpers: table_helpers,
             busy: AtomicBool::new(false),
         })
     }
 
-    pub async fn load(ctx: Arc<SjsContext>, js_runtime: &mut JsRuntime) -> Result<()> {
+    pub async fn load(
+        ctx: Arc<SjsContext>,
+        helpers: Arc<SjsTableHelpers>,
+        js_runtime: &mut JsRuntime,
+    ) -> Result<()> {
         let engine_arc = ctx.engine.clone();
         let mut engine = engine_arc.write().unwrap();
 
@@ -134,11 +155,19 @@ impl SchemeJsRuntime {
             let (scheme_name, table_specifiers) = engine.load_database_schema(&path)?;
             let mut tables = vec![];
             for table_specifier in table_specifiers {
-                let (_, _, tbl) = Self::load_table(js_runtime, table_specifier).await.unwrap();
+                let (_, _, tbl, tbl_helpers) =
+                    Self::load_table(js_runtime, table_specifier).await.unwrap();
+                let mut rt_helpers = helpers
+                    .0
+                    .entry(tbl.name.clone())
+                    .or_insert(SjsHelpersContainer::default());
+                rt_helpers.0.extend(tbl_helpers);
                 tables.push(tbl);
             }
 
-            engine.register_tables(scheme_name.as_str(), tables);
+            if !ctx.is_loaded() {
+                engine.register_tables(scheme_name.as_str(), tables);
+            }
         }
 
         Ok(())
@@ -147,11 +176,11 @@ impl SchemeJsRuntime {
     async fn load_table(
         js_runtime: &mut JsRuntime,
         specifier: ModuleSpecifier,
-    ) -> Result<(ModuleSpecifier, ModuleId, Table)> {
+    ) -> Result<(ModuleSpecifier, ModuleId, Table, Vec<Arc<Helper>>)> {
         let mod_id = js_runtime.load_side_es_module(&specifier).await?;
         let _ = js_runtime.mod_evaluate(mod_id).await?;
 
-        let mut table = {
+        let mut res = {
             let mod_scope = js_runtime.get_module_namespace(mod_id)?;
             {
                 let global = {
@@ -185,12 +214,14 @@ impl SchemeJsRuntime {
 
                 let mut table = global.0;
                 let global = global.1;
+                let mut helpers: Vec<Arc<Helper>> = vec![];
 
                 {
                     let global = { js_runtime.resolve(global).await? };
 
                     let scope = &mut js_runtime.handle_scope();
                     let table_obj_local = v8::Local::new(scope, global).to_object(scope);
+
                     if let Some(state) = table_obj_local {
                         let state_key = v8::String::new(scope, "helpers").unwrap().into();
                         if let Some(queries_obj) = state.get(scope, state_key) {
@@ -203,8 +234,6 @@ impl SchemeJsRuntime {
                                 );
                                 let helper_indexes =
                                     serde_v8::from_v8::<Vec<u32>>(scope, props.unwrap().into())?;
-                                let mut helpers: Vec<Helper> =
-                                    Vec::with_capacity(helper_indexes.capacity());
 
                                 {
                                     for helper_indx in helper_indexes {
@@ -236,11 +265,11 @@ impl SchemeJsRuntime {
                                             )?;
                                             let cb = v8::Local::<v8::Function>::try_from(cb)?;
                                             let global = v8::Global::new(scope, cb);
-                                            helpers.push(Helper {
+                                            helpers.push(Arc::new(Helper {
                                                 identifier,
                                                 internal_type,
                                                 func: global,
-                                            });
+                                            }));
                                         }
                                     }
                                 };
@@ -249,15 +278,17 @@ impl SchemeJsRuntime {
                     }
                 }
 
-                table
+                (table, helpers)
             }
         };
+
+        let (mut table, helpers) = res;
 
         table.init();
 
         table.metadata.set_module_id(mod_id);
 
-        Ok((specifier, mod_id, table))
+        Ok((specifier, mod_id, table, helpers))
     }
 
     pub async fn call_helper(&mut self, helper_call: HelperCall) {
@@ -270,7 +301,9 @@ impl SchemeJsRuntime {
                 let helper = self
                     .table_helpers
                     .find_custom_query_helper(&table, &identifier);
+                println!("{:?}", self.table_helpers.0);
                 if let Some(helper) = helper {
+                    println!("Helper found {:?}", helper);
                     let call = self.js_runtime.call(&helper.func);
                     let result = self
                         .js_runtime
@@ -286,7 +319,7 @@ impl SchemeJsRuntime {
     }
 
     // Method to release the lock
-    fn release_lock(&self) {
+    pub(crate) fn release_lock(&self) {
         self.busy.store(false, Ordering::Release);
     }
 
@@ -298,6 +331,14 @@ impl SchemeJsRuntime {
             Ok(_) => Ok(()),
             Err(_) => Err(()),
         }
+    }
+
+    pub async fn acquire() -> OwnedSemaphorePermit {
+        RUNTIME_CREATION_SEM
+            .with(|v| v.clone())
+            .acquire_owned()
+            .await
+            .unwrap()
     }
 }
 

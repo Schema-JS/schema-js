@@ -1,7 +1,9 @@
+use dashmap::DashMap;
 use enum_as_inner::EnumAsInner;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, EnumAsInner, Debug, Clone)]
 pub enum HelperType {
@@ -17,16 +19,20 @@ pub struct Helper {
 }
 
 #[derive(Debug, Default)]
-pub struct SjsHelpersContainer(pub Vec<Helper>);
+pub struct SjsHelpersContainer(pub Vec<Arc<Helper>>);
 
-pub struct SjsTableHelpers(pub HashMap<String, SjsHelpersContainer>);
+pub struct SjsTableHelpers(pub DashMap<String, SjsHelpersContainer>);
 
 impl SjsTableHelpers {
-    pub fn find_custom_query_helper(&self, table: &str, identifier: &str) -> Option<&Helper> {
+    pub fn find_custom_query_helper(&self, table: &str, identifier: &str) -> Option<Arc<Helper>> {
         match self.0.get(table) {
             None => None,
             Some(val) => {
-                let helper = val.0.iter().find(|e| e.identifier == identifier);
+                let helper = val
+                    .0
+                    .iter()
+                    .find(|e| e.identifier == identifier)
+                    .map(|e| e.clone());
                 helper
             }
         }
