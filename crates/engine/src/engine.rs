@@ -74,13 +74,20 @@ impl SchemeJsEngine {
         }
     }
 
+    pub fn contains_db(&self, name: &str) -> bool {
+        self.databases.iter().any(|e| e.name == name)
+    }
+
     pub fn find_by_name_ref(&self, name: &str) -> Option<&Arc<EngineDb>> {
         self.databases.iter().find(|i| i.name == name)
     }
 
     pub fn add_database(&mut self, name: &str) {
-        self.databases
-            .push(Arc::new(EngineDb::new(self.data_path_dir.clone(), name)))
+        self.databases.push(Arc::new(EngineDb::new(
+            self.data_path_dir.clone(),
+            name,
+            self.helper_tx.clone(),
+        )))
     }
 }
 

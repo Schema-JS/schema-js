@@ -94,8 +94,6 @@ impl<T: Row<T>> TableShard<T> {
                 std::fs::create_dir(path.clone()).unwrap();
             }
 
-            println!("Creating index {:?} {}", path.clone(), index.name);
-
             let index_obj = match index.index_type {
                 IndexType::Hash => IndexTypeValue::Hash(HashIndex::new_from_path(
                     path,

@@ -1,5 +1,6 @@
 use crate::auth::auth_manager::AuthManager;
 use crate::get_internal_tables;
+use schemajs_config::SchemeJsConfig;
 use schemajs_engine::engine::SchemeJsEngine;
 use std::sync::{Arc, RwLock};
 
@@ -16,13 +17,19 @@ impl InternalManager {
         }
     }
 
+    pub fn get_config(&self) -> Arc<SchemeJsConfig> {
+        self._engine.read().unwrap().config.clone()
+    }
+
     pub fn init(&self) {
         {
             let mut writer = self._engine.write().unwrap();
             let default_workspace = writer.config.default.clone().unwrap();
             let default_scheme_name = &default_workspace.scheme_name;
             {
-                writer.add_database(default_scheme_name);
+                if !writer.contains_db(default_scheme_name) {
+                    writer.add_database(default_scheme_name);
+                }
             }
 
             // Load Internal tables

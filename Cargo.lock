@@ -2706,12 +2706,15 @@ name = "schemajs_grpc"
 version = "0.1.0"
 dependencies = [
  "prost",
+ "prost-types",
  "schemajs_engine",
+ "schemajs_helpers",
  "schemajs_internal",
  "schemajs_primitives",
  "schemajs_query",
  "serde",
  "serde_json",
+ "tokio",
  "tonic",
  "tonic-async-interceptor",
  "tonic-build",

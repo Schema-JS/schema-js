@@ -7,9 +7,10 @@ use crate::snapshot;
 use anyhow::{bail, Error, Result};
 use dashmap::DashMap;
 use deno_core::_ops::RustToV8;
+use deno_core::error::AnyError;
 use deno_core::serde_v8::Value;
 use deno_core::url::Url;
-use deno_core::v8::{GetPropertyNamesArgsBuilder, KeyCollectionMode, Local};
+use deno_core::v8::{GetPropertyNamesArgsBuilder, Global, KeyCollectionMode, Local};
 use deno_core::{
     located_script_name, serde_v8, v8, Extension, JsRuntime, ModuleCodeString, ModuleId,
     ModuleSpecifier, PollEventLoopOptions, RuntimeOptions,
@@ -122,7 +123,7 @@ impl SchemeJsRuntime {
         Ok(Self {
             js_runtime,
             ctx: context,
-            table_helpers: table_helpers,
+            table_helpers,
             busy: AtomicBool::new(false),
         })
     }
@@ -297,19 +298,39 @@ impl SchemeJsRuntime {
                 identifier,
                 req,
                 table,
+                response,
             } => {
                 let helper = self
                     .table_helpers
                     .find_custom_query_helper(&table, &identifier);
-                println!("{:?}", self.table_helpers.0);
+
                 if let Some(helper) = helper {
-                    println!("Helper found {:?}", helper);
-                    let call = self.js_runtime.call(&helper.func);
-                    let result = self
-                        .js_runtime
-                        .with_event_loop_promise(call, PollEventLoopOptions::default())
-                        .await
-                        .unwrap();
+                    let req = {
+                        let scope = &mut self.js_runtime.handle_scope();
+                        serde_v8::to_v8(scope, req).map(|e| v8::Global::new(scope, e))
+                    };
+                    match req {
+                        Ok(req_val) => {
+                            let call = self.js_runtime.call_with_args(&helper.func, &[req_val]);
+                            let result = self
+                                .js_runtime
+                                .with_event_loop_promise(call, PollEventLoopOptions::default())
+                                .await;
+                            match result {
+                                Ok(res) => {
+                                    let scope = &mut self.js_runtime.handle_scope();
+                                    let local = v8::Local::new(scope, res);
+                                    let to_val =
+                                        serde_v8::from_v8::<serde_json::Value>(scope, local);
+                                    let to_val =
+                                        to_val.ok().unwrap_or_else(|| serde_json::Value::Null);
+                                    let _ = response.send(to_val);
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                        Err(_) => {}
+                    }
                     // let scope = &mut self.js_runtime.handle_scope();
                     // let local = v8::Local::new(scope, result);
                 }

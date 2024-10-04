@@ -4,6 +4,7 @@ use crate::flags::get_cli;
 use anyhow::Error;
 use base::context::context::SjsContext;
 use base::runner::{SjsRunner, SjsRunnerConfig};
+use base::runtime::SchemeJsRuntime;
 use clap::ArgMatches;
 use schemajs_grpc::server::{GrpcServer, GrpcServerArgs};
 use std::path::PathBuf;
@@ -30,6 +31,14 @@ fn main() {
                     config_path: PathBuf::from(config_file),
                     data_path: None,
                 });
+
+                {
+                    // Loader runtime
+                    let rt = SchemeJsRuntime::new(runner.sjs_context.clone())
+                        .await
+                        .unwrap();
+                    drop(rt);
+                }
 
                 let internal_manager = runner.sjs_context.internal_manager.clone();
 

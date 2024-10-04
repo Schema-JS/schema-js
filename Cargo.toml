@@ -79,6 +79,7 @@ dashmap = "6.1.0"
 tonic-middleware = "0.2.2"
 r2d2 = "0.8.10"
 scopeguard = "1.2.0"
+prost-types = "0.13.3"
 
 [profile.dind]
 inherits = "dev"

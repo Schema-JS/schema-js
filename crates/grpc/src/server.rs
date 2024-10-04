@@ -1,6 +1,8 @@
 use crate::interceptors::auth_interceptor::AuthInterceptor;
 use crate::services::connection::connection_service::proto_connection_service_server::ProtoConnectionServiceServer;
 use crate::services::connection::ConnectionService;
+use crate::services::query::custom_query::custom_query_service::proto_custom_query_service_server::ProtoCustomQueryServiceServer;
+use crate::services::query::custom_query::CustomQueryService;
 use crate::services::query::insert::insert_service::proto_row_insert_service_server::ProtoRowInsertServiceServer;
 use crate::services::query::insert::InsertService;
 use crate::services::query::query_data::query_service::proto_query_service_server::ProtoQueryServiceServer;
@@ -43,6 +45,9 @@ impl GrpcServer {
 
         let query_service = ProtoQueryServiceServer::new(QueryService::new(curr_db.clone()));
 
+        let custom_query_service =
+            ProtoCustomQueryServiceServer::new(CustomQueryService::new(curr_db.clone()));
+
         let _ = Server::builder()
             .add_service(InterceptorFor::new(
                 insert_service,
@@ -52,6 +57,12 @@ impl GrpcServer {
             ))
             .add_service(InterceptorFor::new(
                 query_service,
+                AuthInterceptor {
+                    engine: curr_db.clone(),
+                },
+            ))
+            .add_service(InterceptorFor::new(
+                custom_query_service,
                 AuthInterceptor {
                     engine: curr_db.clone(),
                 },

@@ -33,38 +33,30 @@ impl HelpersManager {
         rt.spawn_pinned(move || {
             tokio::task::spawn_local(async move {
                 while let Some(cmd) = rx.recv().await {
-                    println!("{:?}", cmd);
-                    let ctx_clone = ctx.clone();
                     let permit = SchemeJsRuntime::acquire().await;
-                    match SchemeJsRuntime::new(ctx_clone).await {
+                    match SchemeJsRuntime::new(ctx.clone()).await {
                         Ok(rt) => {
-                            rt.acquire_lock().unwrap();
-                            let mut runtime = scopeguard::guard(rt, |mut runtime| unsafe {
-                                runtime.js_runtime.v8_isolate().enter();
-                                runtime.release_lock();
-                            });
+                            let lock = rt.acquire_lock(); // TODO: Wait for lock
+                            match lock {
+                                Ok(_) => {
+                                    let mut runtime = scopeguard::guard(rt, |mut runtime| unsafe {
+                                        runtime.js_runtime.v8_isolate().enter();
+                                        runtime.release_lock();
+                                    });
 
-                            runtime.call_helper(cmd).await;
+                                    runtime.call_helper(cmd).await;
 
-                            unsafe {
-                                runtime.js_runtime.v8_isolate().exit();
+                                    unsafe {
+                                        runtime.js_runtime.v8_isolate().exit();
+                                    }
+
+                                    drop(permit);
+                                }
+                                Err(_) => {}
                             }
-
-                            drop(permit);
                         }
                         Err(_) => {}
                     }
-                    // let local = tokio::task::LocalSet::new();
-                    // local.spawn_local(async move {
-                    //     let mut rt = SchemeJsRuntime::new(ctx_clone.clone()).await.unwrap();
-                    //     unsafe {
-                    //         //let mut rt = runtime_pool.get().unwrap();
-                    //         rt.acquire_lock().unwrap();
-                    //         rt.call_helper(cmd).await;
-                    //         println!("Hello world");
-                    //         rt.js_runtime.v8_isolate().exit();
-                    //     }
-                    // });
                 }
             })
         });

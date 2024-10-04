@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Serialize, Deserialize, EnumAsInner, Debug, Clone)]
 pub enum HelperType {
@@ -39,12 +40,13 @@ impl SjsTableHelpers {
     }
 }
 
-#[derive(Serialize, Deserialize, EnumAsInner, Debug, Clone)]
+#[derive(EnumAsInner, Debug, Clone)]
 pub enum HelperCall {
     CustomQuery {
         table: String,
         identifier: String,
         req: Value,
+        response: UnboundedSender<Value>,
     },
     InsertHook {
         rows: Vec<String>,

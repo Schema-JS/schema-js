@@ -10,6 +10,7 @@ license = "MIT"
 [dependencies]
 tonic.workspace = true
 prost.workspace = true
+tokio.workspace = true
 tonic-async-interceptor.workspace = true
 schemajs_internal = { path = "../internal" }
 schemajs_query = { path = "../query" }
@@ -19,6 +20,8 @@ tonic-middleware.workspace = true
 serde.workspace = true
 uuid = { version = "1.10.0", features = ["v4"] }
 serde_json.workspace = true
+prost-types.workspace = true
+schemajs_helpers = { version = "0.1.0", path = "../helpers" }
 
 [build-dependencies]
 tonic-build = "0.12.2"

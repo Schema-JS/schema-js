@@ -43,6 +43,7 @@ impl SjsRunner {
 mod runner_tests {
     use crate::runner::{SjsRunner, SjsRunnerConfig};
     use schemajs_helpers::helper::HelperCall;
+    use serde_json::json;
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -63,7 +64,10 @@ mod runner_tests {
             .send(HelperCall::CustomQuery {
                 table: "users".to_string(),
                 identifier: "helloWorld".to_string(),
-                req: serde_json::Value::String("Hello World".to_string()),
+                req: json!({
+                    "id": 1,
+                    "msg": "Hello"
+                }),
             })
             .await
             .unwrap();

@@ -1,5 +1,6 @@
 syntax = "proto3";
 import "shared/data_value.proto";
+import "google/protobuf/struct.proto";
 
 package sjs.query;
 
@@ -68,4 +69,18 @@ message QueryResponse {
 service ProtoQueryService {
     // RPC for inserting rows into a table.
     rpc QueryRows (QueryDataRequest) returns (QueryResponse);
+}
+
+message CustomQueryRequest {
+    string table_name = 1;
+    string identifier = 2;
+    string req = 3;
+}
+
+message CustomQueryResponse {
+    google.protobuf.Value value = 1;
+}
+
+service ProtoCustomQueryService {
+    rpc CustomQuery(CustomQueryRequest) returns (CustomQueryResponse);
 }
