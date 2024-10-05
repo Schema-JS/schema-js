@@ -1,8 +1,8 @@
 use crate::validation_error::ValidationError;
 use enum_as_inner::EnumAsInner;
+use schemajs_query::RowSerializationError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use schemajs_query::RowSerializationError;
 
 #[derive(Debug, EnumAsInner, Error, Serialize, Deserialize)]
 pub enum InsertionError {

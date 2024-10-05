@@ -14,6 +14,7 @@ use schemajs_index::index_type::{IndexType, IndexTypeValue};
 use schemajs_index::types::{Index, IndexKey};
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::table::Table;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::path::PathBuf;
@@ -139,24 +140,26 @@ impl<T: Row> TableShard<T> {
                 .write()
                 .unwrap()
                 .set_on_reconcile(Box::new(move |rows| {
-                    {
-                        let rows: Vec<_> = rows
-                            .iter()
-                            .filter_map(|row| {
-                                match serde_json::from_slice(&row.data) {
-                                    Ok(json) => Some(json),
-                                    Err(e) => {
-                                        eprintln!("Error converting row to JSON: {:?}", e); // Log the error
-                                        None // Skip rows that failed to convert
-                                    }
-                                }
-                            })
-                            .collect();
+                    let rows: Vec<(T, u64)> = rows
+                        .into_iter()
+                        .map(|row| (T::from_slice(&row.data, table.clone()), row.index))
+                        .collect();
 
+                    {
+                        // TODO: move row->to_json inside the thread
+                        let vals: Vec<Value> = rows
+                            .iter()
+                            .filter_map(|(row, _)| row.to_json().ok())
+                            .collect();
+                        let helper_tx = helper_tx.clone();
+                        let tbl_name = table.name.clone();
                         tokio::spawn(async move {
-                            helper_tx.send(HelperCall::InsertHook {
-                                rows
-                            })
+                            let _ = helper_tx
+                                .send(HelperCall::InsertHook {
+                                    rows: vals,
+                                    table: tbl_name,
+                                })
+                                .await;
                         });
                     }
                     Self::insert_indexes(table.clone(), indexes.clone(), rows);
@@ -170,12 +173,11 @@ impl<T: Row> TableShard<T> {
     pub fn insert_indexes(
         table: Arc<Table>,
         indexes: Arc<CHashMap<String, IndexTypeValue>>,
-        data: Vec<DataWithIndex>,
+        data: Vec<(T, u64)>,
     ) {
         let mut index_ordered_items: HashMap<String, Vec<(IndexKeyType, u64)>> = HashMap::new();
 
-        for row in data {
-            let row_t = T::from_slice(&row.data, table.clone());
+        for (row_t, pos) in data.iter() {
             for index in &table.indexes {
                 let mut can_index = false;
                 let mut composite_key_vals: Vec<(String, String)> = vec![];
@@ -197,7 +199,7 @@ impl<T: Row> TableShard<T> {
                     let composite_key = CompositeKey(composite_key_vals);
                     let indx = real_indx.as_index();
                     let key = indx.to_key(composite_key);
-                    let insertion_value = (key, row.index);
+                    let insertion_value = (key, pos.clone());
 
                     let index_exists = index_ordered_items.contains_key(&index.name);
 

@@ -38,6 +38,23 @@ impl SjsTableHelpers {
             }
         }
     }
+
+    pub fn find_hook_helper(&self, table: &str, hook: HelperType) -> Option<Arc<Helper>> {
+        match self.0.get(table) {
+            None => None,
+            Some(val) => match hook {
+                HelperType::InsertHook => {
+                    let helper = val
+                        .0
+                        .iter()
+                        .find(|e| e.internal_type.is_insert_hook())
+                        .map(|e| e.clone());
+                    helper
+                }
+                _ => None,
+            },
+        }
+    }
 }
 
 #[derive(EnumAsInner, Debug, Clone)]
@@ -49,6 +66,7 @@ pub enum HelperCall {
         response: UnboundedSender<Value>,
     },
     InsertHook {
+        table: String,
         rows: Vec<Value>,
     },
 }

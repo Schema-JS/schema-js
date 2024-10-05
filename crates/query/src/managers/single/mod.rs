@@ -226,10 +226,10 @@ impl<T: Row> SingleQueryManager<T> {
                         TableShard::<T>::insert_indexes(
                             table_shard.table.clone(),
                             table_shard.indexes.clone(),
-                            vec![DataWithIndex {
-                                data: row.to_vec(),
-                                index: pointer as u64,
-                            }],
+                            vec![(
+                                T::from_slice(row, table_shard.table.clone()),
+                                pointer as u64,
+                            )],
                         );
                     }
                 }

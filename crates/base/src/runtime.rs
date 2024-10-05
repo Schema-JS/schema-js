@@ -305,16 +305,24 @@ impl SchemeJsRuntime {
                     .table_helpers
                     .find_custom_query_helper(&table, &identifier);
 
-                self.execute_helper(req, response, helper).await;
+                self.execute_helper(req, Some(response), helper).await;
             }
-            HelperCall::InsertHook { .. } => {}
+            HelperCall::InsertHook { table, rows } => {
+                let helper = self
+                    .table_helpers
+                    .find_hook_helper(&table, HelperType::InsertHook);
+                let arr_to_val = serde_json::to_value(rows);
+                if let Ok(val) = arr_to_val {
+                    self.execute_helper(val, None, helper).await
+                }
+            }
         }
     }
 
     async fn execute_helper(
         &mut self,
         req: serde_json::Value,
-        response: UnboundedSender<serde_json::Value>,
+        response: Option<UnboundedSender<serde_json::Value>>,
         helper: Option<Arc<Helper>>,
     ) {
         if let Some(helper) = helper {
@@ -335,7 +343,9 @@ impl SchemeJsRuntime {
                             let local = v8::Local::new(scope, res);
                             let to_val = serde_v8::from_v8::<serde_json::Value>(scope, local);
                             let to_val = to_val.ok().unwrap_or_else(|| serde_json::Value::Null);
-                            let _ = response.send(to_val);
+                            if let Some(response) = response {
+                                let _ = response.send(to_val);
+                            }
                         }
                         Err(_) => {}
                     }
