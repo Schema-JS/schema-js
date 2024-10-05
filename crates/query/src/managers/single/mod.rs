@@ -18,7 +18,7 @@ use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
 #[derive(Debug)]
-pub struct SingleQueryManager<T: Row<T>> {
+pub struct SingleQueryManager<T: Row> {
     // A thread-safe vector that holds the names of registered tables.
     // This is used to track the tables managed by the query manager.
     pub table_names: RwLock<Vec<String>>,
@@ -57,12 +57,12 @@ pub struct SingleQueryManager<T: Row<T>> {
 /// - `scheme`: The schema or structure of the database, as a string.
 /// - `id`: A unique identifier for the query manager instance, useful for distinguishing between
 ///          multiple query managers in a larger system.
-impl<T: Row<T>> SingleQueryManager<T> {
+impl<T: Row> SingleQueryManager<T> {
     /// Initializes an instance of SingleQueryManager which handles everything query-related
     ///
     /// Examples
     ///
-    /// ```
+    /// ```no_run
     /// use schemajs_query::managers::single::SingleQueryManager;
     /// use schemajs_query::row_json::RowJson;
     /// let query_manager: SingleQueryManager<RowJson> = SingleQueryManager::new("database-name".to_string());
@@ -149,7 +149,7 @@ impl<T: Row<T>> SingleQueryManager<T> {
     ///
     /// let uuid = query_manager.insert(RowJson {
     ///   table: query_manager.get_table("users").unwrap(),
-    ///   value: RowData {
+    ///   values: RowData {
     ///     value: Default::default()
     ///    }
     /// });
@@ -196,9 +196,7 @@ impl<T: Row<T>> SingleQueryManager<T> {
                 }
             }
 
-            let serialized_value = row
-                .serialize()
-                .map_err(|_| QueryError::InvalidSerialization)?;
+            let serialized_value = row.to_vec().map_err(|_| QueryError::InvalidSerialization)?;
 
             table_inserts
                 .entry(table_name.clone())

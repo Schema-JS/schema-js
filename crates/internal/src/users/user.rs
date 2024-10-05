@@ -24,6 +24,11 @@ pub(crate) static INTERNAL_USER_TABLE: LazyLock<Table> = LazyLock::new(|| {
     let mut tbl = Table::new(INTERNAL_USER_TABLE_NAME)
         .add_column(Column::new("identifier", DataTypes::String).set_required(true))
         .add_column(
+            Column::new("scheme", DataTypes::String)
+                .set_required(true)
+                .set_default_index(true),
+        )
+        .add_column(
             Column::new("hashed_password", DataTypes::String)
                 .set_required(true)
                 .set_default_index(false),

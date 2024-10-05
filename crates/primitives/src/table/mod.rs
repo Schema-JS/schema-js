@@ -15,6 +15,7 @@ pub struct Table {
     pub columns: HashMap<String, Column>,
     pub indexes: Vec<Index>,
     pub primary_key: String,
+    #[serde(skip_serializing, skip_deserializing)]
     pub metadata: TableMetadata,
 }
 

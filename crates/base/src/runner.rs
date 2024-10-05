@@ -46,6 +46,7 @@ mod runner_tests {
     use serde_json::json;
     use std::path::PathBuf;
     use std::time::Duration;
+    use tokio::sync::mpsc::unbounded_channel;
 
     #[tokio::test]
     pub async fn test_runner_with_helpers() {
@@ -59,6 +60,8 @@ mod runner_tests {
 
         println!("Before tx created");
 
+        let resp = unbounded_channel();
+
         runner
             .helper_tx
             .send(HelperCall::CustomQuery {
@@ -68,6 +71,7 @@ mod runner_tests {
                     "id": 1,
                     "msg": "Hello"
                 }),
+                response: resp.0,
             })
             .await
             .unwrap();

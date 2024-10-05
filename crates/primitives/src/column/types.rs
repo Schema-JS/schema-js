@@ -67,7 +67,11 @@ impl From<(&Column, &Value)> for DataValue {
                 let x = new_uuid.unwrap();
                 DataValue::Uuid(x)
             }
-            DataTypes::String => DataValue::String(value.1.as_str().unwrap().to_string()),
+            DataTypes::String => value
+                .1
+                .as_str()
+                .map(|e| DataValue::String(e.to_string()))
+                .unwrap_or(DataValue::Null),
             DataTypes::Boolean => DataValue::Boolean(value.1.as_bool().unwrap()),
             DataTypes::Number => DataValue::Number(value.1.as_number().unwrap().clone()),
         }

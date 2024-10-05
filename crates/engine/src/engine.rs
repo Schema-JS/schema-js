@@ -96,6 +96,7 @@ mod test {
     use crate::engine::SchemeJsEngine;
     use schemajs_config::SchemeJsConfig;
     use schemajs_data::shard::Shard;
+    use schemajs_helpers::create_helper_channel;
     use schemajs_primitives::column::types::{DataTypes, DataValue};
     use schemajs_primitives::column::Column;
     use schemajs_primitives::table::Table;
@@ -108,8 +109,13 @@ mod test {
 
     #[flaky_test::flaky_test]
     pub fn test_db_engine() {
+        let create_helper = create_helper_channel(1);
         let config = SchemeJsConfig::default();
-        let db_engine = Arc::new(RwLock::new(SchemeJsEngine::new(None, Arc::new(config))));
+        let db_engine = Arc::new(RwLock::new(SchemeJsEngine::new(
+            None,
+            Arc::new(config),
+            create_helper.0,
+        )));
 
         // Add database
         {
@@ -127,6 +133,19 @@ mod test {
 
             {
                 let mut cols: HashMap<String, Column> = HashMap::new();
+                cols.insert(
+                    "_uid".to_string(),
+                    Column {
+                        name: "_uid".to_string(),
+                        data_type: DataTypes::String,
+                        default_value: None,
+                        required: false,
+                        comment: None,
+                        primary_key: false,
+                        default_index: Some(true),
+                    },
+                );
+
                 cols.insert(
                     "id".to_string(),
                     Column {
@@ -160,16 +179,18 @@ mod test {
         let thread_1 = thread::spawn(move || {
             let mut writer = ref_shard1.write().unwrap();
             let db = writer.find_by_name_ref("rust-test-random").unwrap();
+            let tbl = db.query_manager.get_table("users").unwrap();
             db.query_manager
-                .insert(RowJson {
-                    table: db.query_manager.get_table("users").unwrap(),
-                    value: RowData {
-                        value: json!({
+                .insert(
+                    RowJson::from_json(
+                        json!({
                             "_uid": "97ad4bba-98c5-4a9e-80d8-6bf6302fb883",
                             "id": "1"
                         }),
-                    },
-                })
+                        tbl,
+                    )
+                    .unwrap(),
+                )
                 .unwrap();
         });
 
@@ -177,16 +198,18 @@ mod test {
         let thread_2 = thread::spawn(move || {
             let mut writer = ref_shard2.write().unwrap();
             let db = writer.find_by_name_ref("rust-test-random").unwrap();
+            let tbl = db.query_manager.get_table("users").unwrap();
             db.query_manager
-                .insert(RowJson {
-                    table: db.query_manager.get_table("users").unwrap(),
-                    value: RowData {
-                        value: json!({
+                .insert(
+                    RowJson::from_json(
+                        json!({
                             "_uid": "2ec92148-646d-4521-974f-b4a6d422c195",
                             "id": "2"
                         }),
-                    },
-                })
+                        tbl,
+                    )
+                    .unwrap(),
+                )
                 .unwrap();
         });
 
@@ -203,8 +226,8 @@ mod test {
             let a = tbl.data.read().unwrap().get_element(0).unwrap();
             let b = tbl.data.read().unwrap().get_element(1).unwrap();
 
-            let a = RowJson::from_slice(tbl.table.clone(), a.as_slice());
-            let b = RowJson::from_slice(tbl.table.clone(), b.as_slice());
+            let a = RowJson::from_slice(a.as_slice(), tbl.table.clone());
+            let b = RowJson::from_slice(b.as_slice(), tbl.table.clone());
 
             assert_eq!(
                 a.get_value(tbl.table.get_column("id").unwrap()).unwrap(),

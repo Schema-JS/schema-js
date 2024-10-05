@@ -114,29 +114,24 @@ impl AuthManager {
         let search_users = Self::search_user(db, &scheme_username);
 
         if search_users.is_none() {
-            let _ = db
+            let tbl = db
                 .query_manager
-                .raw_insert(
-                    &mut [RowJson {
-                        table: db
-                            .query_manager
-                            .get_table(INTERNAL_USER_TABLE_NAME)
-                            .unwrap(),
-                        value: RowData {
-                            value: serde_json::to_value(create_user(
-                                scheme_username,
-                                default_scheme.password.clone(),
-                                true,
-                                true,
-                                vec![],
-                                default_scheme_name.to_string(),
-                            ))
-                            .unwrap(),
-                        },
-                    }],
-                    true,
-                )
+                .get_table(INTERNAL_USER_TABLE_NAME)
                 .unwrap();
+            let user_row = RowJson::from_json(
+                serde_json::to_value(create_user(
+                    scheme_username,
+                    default_scheme.password.clone(),
+                    true,
+                    true,
+                    vec![],
+                    default_scheme_name.to_string(),
+                ))
+                .unwrap(),
+                tbl,
+            )
+            .unwrap();
+            let _ = db.query_manager.raw_insert(&mut [user_row], true).unwrap();
         }
     }
 

@@ -1,6 +1,7 @@
 use crate::engine::SchemeJsEngine;
 use deno_core::{op2, serde_json, OpState};
 use schemajs_query::errors::QueryError;
+use schemajs_query::row::Row;
 use schemajs_query::row_json::{RowData, RowJson};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -28,12 +29,8 @@ pub async fn op_engine_insert_row(
 
     let table = query_manager.get_table(&table_name);
     if let Some(table) = table {
-        let insert = query_manager.insert(RowJson {
-            table,
-            value: RowData { value: row },
-        });
-
-        return insert;
+        return query_manager
+            .insert(RowJson::from_json(row, table).map_err(|_| QueryError::InvalidSerialization)?);
     }
 
     return Err(QueryError::InvalidInsertion);

@@ -37,7 +37,7 @@ use std::sync::{Arc, RwLock};
 ///   It is a marker used to tell the Rust compiler that this struct works with a specific row type,
 ///   even though it doesn’t directly store a `T`.
 #[derive(Debug)]
-pub struct TableShard<T: Row<T>> {
+pub struct TableShard<T: Row> {
     pub table: Arc<Table>,
     pub data: Arc<RwLock<MapShard<DataShard, DataShardConfig>>>,
     pub temps: TempCollection<DataShard, DataShardConfig, TempDataShardConfig>,
@@ -45,7 +45,7 @@ pub struct TableShard<T: Row<T>> {
     _marker: PhantomData<T>,
 }
 
-impl<T: Row<T>> TableShard<T> {
+impl<T: Row> TableShard<T> {
     /// Creates a new `TableShard` instance for a given table. This method is responsible for setting up
     /// the table's main data shard, temporary shards, and indexes.
     ///
@@ -149,7 +149,7 @@ impl<T: Row<T>> TableShard<T> {
         let mut index_ordered_items: HashMap<String, Vec<(IndexKeyType, u64)>> = HashMap::new();
 
         for row in data {
-            let row_t = T::from_slice(table.clone(), &row.data);
+            let row_t = T::from_slice(&row.data, table.clone());
             for index in &table.indexes {
                 let mut can_index = false;
                 let mut composite_key_vals: Vec<(String, String)> = vec![];

@@ -576,7 +576,7 @@ mod test {
     pub async fn test_runtime_config_as_file() -> anyhow::Result<()> {
         let (tx, rx) = create_helper_channel(1);
         let create_rt = SchemeJsRuntime::new(Arc::new(SjsContext::new(
-            PathBuf::from("./test_cases/default-db"),
+            PathBuf::from("./test_cases/default-db/CustomSchemeJS.toml"),
             None,
             tx,
         )?))
