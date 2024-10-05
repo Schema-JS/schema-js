@@ -49,6 +49,6 @@ pub enum HelperCall {
         response: UnboundedSender<Value>,
     },
     InsertHook {
-        rows: Vec<String>,
+        rows: Vec<Value>,
     },
 }

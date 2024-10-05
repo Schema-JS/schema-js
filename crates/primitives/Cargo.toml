@@ -15,4 +15,3 @@ enum-as-inner.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
 schemajs_index = { version = "0.1.0", path = "../index" }
-schemajs_helpers = { version = "0.1.0", path = "../helpers" }

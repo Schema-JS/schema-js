@@ -1,9 +1,10 @@
-use crate::row::Row;
-use crate::serializer::RowSerializationError;
+use super::row::Row;
+use crate::RowSerializationError;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::column::Column;
 use schemajs_primitives::table::Table;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;

@@ -8,6 +8,7 @@ use chashmap::CHashMap;
 use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
 use schemajs_data::shard::temp_map_shard::DataWithIndex;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
+use schemajs_helpers::helper::HelperCall;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::table::Table;
 use serde::Serialize;
@@ -15,6 +16,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -38,6 +40,8 @@ pub struct SingleQueryManager<T: Row> {
     pub search_manager: QuerySearchManager<T>,
 
     pub data_path: Option<PathBuf>,
+
+    pub helper_tx: Sender<HelperCall>,
 }
 
 /// `SingleQueryManager` is responsible for managing all query-related operations
@@ -67,7 +71,7 @@ impl<T: Row> SingleQueryManager<T> {
     /// use schemajs_query::row_json::RowJson;
     /// let query_manager: SingleQueryManager<RowJson> = SingleQueryManager::new("database-name".to_string());
     /// ```
-    pub fn new(scheme: String) -> Self {
+    pub fn new(scheme: String, helper_tx: Sender<HelperCall>) -> Self {
         let uuid = Uuid::new_v4();
         let tables = Arc::new(CHashMap::default());
 
@@ -78,6 +82,7 @@ impl<T: Row> SingleQueryManager<T> {
             id: uuid,
             search_manager: QuerySearchManager::new(tables),
             data_path: None,
+            helper_tx,
         }
     }
 
@@ -108,6 +113,7 @@ impl<T: Row> SingleQueryManager<T> {
                 TempDataShardConfig {
                     max_offsets: TempOffsetTypes::Custom(Some(1000)),
                 },
+                self.helper_tx.clone(),
             ),
         );
     }

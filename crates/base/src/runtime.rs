@@ -34,6 +34,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use walkdir::{DirEntry, WalkDir};
 
@@ -304,36 +305,43 @@ impl SchemeJsRuntime {
                     .table_helpers
                     .find_custom_query_helper(&table, &identifier);
 
-                if let Some(helper) = helper {
-                    let req = {
-                        let scope = &mut self.js_runtime.handle_scope();
-                        serde_v8::to_v8(scope, req).map(|e| v8::Global::new(scope, e))
-                    };
-                    match req {
-                        Ok(req_val) => {
-                            let call = self.js_runtime.call_with_args(&helper.func, &[req_val]);
-                            let result = self
-                                .js_runtime
-                                .with_event_loop_promise(call, PollEventLoopOptions::default())
-                                .await;
-                            match result {
-                                Ok(res) => {
-                                    let scope = &mut self.js_runtime.handle_scope();
-                                    let local = v8::Local::new(scope, res);
-                                    let to_val =
-                                        serde_v8::from_v8::<serde_json::Value>(scope, local);
-                                    let to_val =
-                                        to_val.ok().unwrap_or_else(|| serde_json::Value::Null);
-                                    let _ = response.send(to_val);
-                                }
-                                Err(_) => {}
-                            }
+                self.execute_helper(req, response, helper).await;
+            }
+            HelperCall::InsertHook { .. } => {}
+        }
+    }
+
+    async fn execute_helper(
+        &mut self,
+        req: serde_json::Value,
+        response: UnboundedSender<serde_json::Value>,
+        helper: Option<Arc<Helper>>,
+    ) {
+        if let Some(helper) = helper {
+            let req = {
+                let scope = &mut self.js_runtime.handle_scope();
+                serde_v8::to_v8(scope, req).map(|e| v8::Global::new(scope, e))
+            };
+            match req {
+                Ok(req_val) => {
+                    let call = self.js_runtime.call_with_args(&helper.func, &[req_val]);
+                    let result = self
+                        .js_runtime
+                        .with_event_loop_promise(call, PollEventLoopOptions::default())
+                        .await;
+                    match result {
+                        Ok(res) => {
+                            let scope = &mut self.js_runtime.handle_scope();
+                            let local = v8::Local::new(scope, res);
+                            let to_val = serde_v8::from_v8::<serde_json::Value>(scope, local);
+                            let to_val = to_val.ok().unwrap_or_else(|| serde_json::Value::Null);
+                            let _ = response.send(to_val);
                         }
                         Err(_) => {}
                     }
                 }
+                Err(_) => {}
             }
-            HelperCall::InsertHook { .. } => {}
         }
     }
 

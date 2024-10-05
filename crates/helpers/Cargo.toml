@@ -17,3 +17,4 @@ thiserror.workspace = true
 tokio.workspace = true
 r2d2.workspace = true
 dashmap.workspace = true
+schemajs_primitives = { version = "0.1.0", path = "../primitives" }

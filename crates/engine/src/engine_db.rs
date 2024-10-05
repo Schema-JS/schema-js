@@ -20,7 +20,7 @@ impl EngineDb {
     pub fn new(base_path: Option<PathBuf>, name: &str, helper_tx: Sender<HelperCall>) -> Self {
         let db_folder = create_scheme_js_db(base_path.clone(), name);
 
-        let mut query_manager = SingleQueryManager::new(name.to_string());
+        let mut query_manager = SingleQueryManager::new(name.to_string(), helper_tx.clone());
         query_manager.data_path = base_path.clone();
 
         EngineDb {

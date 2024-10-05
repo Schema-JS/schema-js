@@ -13,6 +13,7 @@ anyhow.workspace = true
 enum-as-inner.workspace = true
 schemajs_primitives = { version = "0.1.0", path = "../primitives" }
 schemajs_data = { version = "0.1.0", path = "../data" }
+schemajs_helpers = { version = "0.1.0", path = "../helpers" }
 thiserror.workspace = true
 serde_json.workspace = true
 borsh.workspace = true

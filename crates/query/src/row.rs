@@ -1,21 +1,12 @@
-use crate::serializer::{RowSerializationError, RowSerializer};
+use crate::RowSerializationError;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_primitives::column::Column;
 use schemajs_primitives::table::Table;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::Arc;
-
-pub trait RowBuilder<T> {
-    fn from_slice(table: Arc<Table>, slice: &[u8]) -> T;
-
-    fn from_serializable<R>(table: Arc<Table>, data: R) -> Result<T, ()>
-    where
-        R: Serialize;
-
-    fn from_map(table: Arc<Table>, data: HashMap<String, DataValue>) -> Result<T, ()>;
-}
 
 /// The `Row` trait defines the core operations that any row in the database must implement.
 /// It extends the `RowSerializer` trait to ensure that rows can be serialized and deserialized
@@ -35,6 +26,17 @@ pub trait Row {
     fn to_vec(&self) -> Result<Vec<u8>, RowSerializationError>;
 
     fn to_map(&self) -> Result<HashMap<String, DataValue>, RowSerializationError>;
+
+    fn to_json(&self) -> Result<Value, RowSerializationError> {
+        let mut json_vals = HashMap::new();
+        for (col, val) in self.to_map()? {
+            json_vals.insert(col, val.to_value());
+        }
+
+        Ok(serde_json::to_value(json_vals).map_err(|_| {
+            RowSerializationError::SerializationError("Invalid Json Parsing".to_string())
+        })?)
+    }
 
     fn from_slice(slice: &[u8], table: Arc<Table>) -> Self;
 

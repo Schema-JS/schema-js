@@ -6,6 +6,7 @@ use schemajs_data::shard::shards::data_shard::shard::DataShard;
 use schemajs_data::shard::temp_collection::TempCollection;
 use schemajs_data::shard::temp_map_shard::DataWithIndex;
 use schemajs_dirs::create_schema_js_table;
+use schemajs_helpers::helper::HelperCall;
 use schemajs_index::composite_key::CompositeKey;
 use schemajs_index::implementations::hash::hash_index::HashIndex;
 use schemajs_index::index_keys::IndexKeyType;
@@ -17,6 +18,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use tokio::sync::mpsc::Sender;
 
 /// `TableShard` is a structure that manages the sharding of a specific table's data.
 /// It is responsible for storing the table's data in a main shard, handling temporary shards
@@ -43,6 +45,7 @@ pub struct TableShard<T: Row> {
     pub temps: TempCollection<DataShard, DataShardConfig, TempDataShardConfig>,
     pub indexes: Arc<CHashMap<String, IndexTypeValue>>,
     _marker: PhantomData<T>,
+    helper_tx: Sender<HelperCall>,
 }
 
 impl<T: Row> TableShard<T> {
@@ -62,6 +65,7 @@ impl<T: Row> TableShard<T> {
         base_path: Option<PathBuf>,
         scheme: &str,
         temp_config: TempDataShardConfig,
+        helper_tx: Sender<HelperCall>,
     ) -> Self {
         let table_path = create_schema_js_table(base_path, scheme, table.name.as_str());
         println!("{:?}", table_path);
@@ -111,6 +115,7 @@ impl<T: Row> TableShard<T> {
             table: Arc::new(table),
             temps: temp_collection,
             _marker: PhantomData,
+            helper_tx,
         };
 
         tbl_shard.init();
@@ -128,11 +133,32 @@ impl<T: Row> TableShard<T> {
         for temp_shard in self.temps.temps.iter() {
             let indexes = indexes.clone();
             let table = self.table.clone();
+            let helper_tx = self.helper_tx.clone();
 
             temp_shard
                 .write()
                 .unwrap()
                 .set_on_reconcile(Box::new(move |rows| {
+                    {
+                        let rows: Vec<_> = rows
+                            .iter()
+                            .filter_map(|row| {
+                                match serde_json::from_slice(&row.data) {
+                                    Ok(json) => Some(json),
+                                    Err(e) => {
+                                        eprintln!("Error converting row to JSON: {:?}", e); // Log the error
+                                        None // Skip rows that failed to convert
+                                    }
+                                }
+                            })
+                            .collect();
+
+                        tokio::spawn(async move {
+                            helper_tx.send(HelperCall::InsertHook {
+                                rows
+                            })
+                        });
+                    }
                     Self::insert_indexes(table.clone(), indexes.clone(), rows);
                     Ok(())
                 }))

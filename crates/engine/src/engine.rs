@@ -100,7 +100,7 @@ mod test {
     use schemajs_primitives::column::types::{DataTypes, DataValue};
     use schemajs_primitives::column::Column;
     use schemajs_primitives::table::Table;
-    use schemajs_query::row::{Row, RowBuilder};
+    use schemajs_query::row::Row;
     use schemajs_query::row_json::{RowData, RowJson};
     use serde_json::json;
     use std::collections::HashMap;

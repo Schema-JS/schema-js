@@ -2730,6 +2730,7 @@ dependencies = [
  "deno_core",
  "enum-as-inner",
  "r2d2",
+ "schemajs_primitives",
  "serde",
  "serde_json",
  "thiserror",
@@ -2810,7 +2811,6 @@ version = "0.1.0"
 dependencies = [
  "deno_core",
  "enum-as-inner",
- "schemajs_helpers",
  "schemajs_index",
  "serde",
  "serde_json",
@@ -2830,6 +2830,7 @@ dependencies = [
  "flaky_test",
  "schemajs_data",
  "schemajs_dirs",
+ "schemajs_helpers",
  "schemajs_index",
  "schemajs_primitives",
  "serde",
