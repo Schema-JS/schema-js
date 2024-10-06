@@ -30,19 +30,28 @@ impl InternalManager {
                     writer.add_database(&default_scheme_name);
                 }
             }
-
-            // Load Internal tables
-            {
-                let db_names: Vec<String> =
-                    writer.databases.iter().map(|e| e.name.clone()).collect();
-                for schema_name in db_names {
-                    writer.register_tables(&schema_name, get_internal_tables());
-                }
-            }
         }
 
+        // Load Internal tables
+        let dbs = {
+            let read_engine = self._engine.read().unwrap();
+
+            let db_names: Vec<String> = read_engine
+                .databases
+                .iter()
+                .map(|e| e.name.clone())
+                .collect();
+            for schema_name in &db_names {
+                read_engine.register_tables(schema_name, get_internal_tables());
+            }
+
+            db_names
+        };
+
         {
-            self.auth_manager.init_default_user();
+            for db_name in dbs {
+                self.auth_manager.init_default_user(&db_name);
+            }
         }
     }
 

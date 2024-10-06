@@ -101,16 +101,14 @@ impl AuthManager {
         None
     }
 
-    pub fn init_default_user(&self) {
+    pub fn init_default_user(&self, db_name: &str) {
         let mut engine = self.engine.write().unwrap();
-        let config = engine.config.clone();
-        let default_scheme_name = config.global.default_scheme.clone();
-        let default_auth = config.global.default_auth.clone();
+        let db = engine.find_by_name_ref(&db_name).unwrap();
+        let auth = &db.db_config;
 
-        // Load default user
-        let db = engine.find_by_name_ref(&default_scheme_name).unwrap();
+        let (user, pass) = (&auth.default_auth.username, &auth.default_auth.password);
 
-        let search_users = Self::search_user(db, &default_auth.username);
+        let search_users = Self::search_user(db, user);
 
         if search_users.is_none() {
             let tbl = db
@@ -119,12 +117,12 @@ impl AuthManager {
                 .unwrap();
             let user_row = RowJson::from_json(
                 serde_json::to_value(create_user(
-                    default_auth.username.clone(),
-                    default_auth.password.clone(),
+                    user.clone(),
+                    pass.clone(),
                     true,
                     true,
                     vec![],
-                    default_scheme_name.to_string(),
+                    db_name.to_string(),
                 ))
                 .unwrap(),
                 tbl,
