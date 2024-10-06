@@ -2631,6 +2631,7 @@ name = "schemajs_config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "paste",
  "serde",
  "toml",
 ]
@@ -2828,6 +2829,7 @@ dependencies = [
  "chashmap",
  "enum-as-inner",
  "flaky_test",
+ "schemajs_config",
  "schemajs_data",
  "schemajs_dirs",
  "schemajs_helpers",

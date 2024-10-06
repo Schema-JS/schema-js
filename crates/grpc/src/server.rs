@@ -25,13 +25,10 @@ pub struct GrpcServerArgs {
 
 impl GrpcServer {
     pub fn new(args: GrpcServerArgs) -> Self {
+        let default_ip = args.db_manager.get_config().grpc.host.clone();
         Self {
             db_manager: args.db_manager,
-            ip: args
-                .ip
-                .unwrap_or_else(|| String::from("[::1]:34244"))
-                .parse()
-                .unwrap(),
+            ip: args.ip.unwrap_or_else(|| default_ip).parse().unwrap(),
         }
     }
 

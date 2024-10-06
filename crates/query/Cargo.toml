@@ -24,6 +24,7 @@ uuid.workspace = true
 tokio.workspace = true
 tempfile.workspace = true
 schemajs_index = { version = "0.1.0", path = "../index" }
+schemajs_config = { version = "0.1.0", path = "../config" }
 
 [dev-dependencies]
 flaky_test.workspace = true

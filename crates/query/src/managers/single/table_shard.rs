@@ -1,10 +1,10 @@
 use crate::row::Row;
 use chashmap::CHashMap;
+use schemajs_config::DatabaseConfig;
 use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
 use schemajs_data::shard::shards::data_shard::shard::DataShard;
 use schemajs_data::shard::temp_collection::TempCollection;
-use schemajs_data::shard::temp_map_shard::DataWithIndex;
 use schemajs_dirs::create_schema_js_table;
 use schemajs_helpers::helper::HelperCall;
 use schemajs_index::composite_key::CompositeKey;
@@ -67,6 +67,7 @@ impl<T: Row> TableShard<T> {
         scheme: &str,
         temp_config: TempDataShardConfig,
         helper_tx: Sender<HelperCall>,
+        db_config: &Arc<DatabaseConfig>,
     ) -> Self {
         let table_path = create_schema_js_table(base_path, scheme, table.name.as_str());
         println!("{:?}", table_path);
@@ -75,7 +76,7 @@ impl<T: Row> TableShard<T> {
             table_path.clone(),
             "data_",
             DataShardConfig {
-                max_offsets: Some(2_500_000),
+                max_offsets: Some(db_config.max_rows_per_shard),
             },
         );
 
@@ -87,8 +88,13 @@ impl<T: Row> TableShard<T> {
             std::fs::create_dir_all(temps_folder.clone()).unwrap();
         }
 
-        let temp_collection =
-            TempCollection::new(refs.clone(), 5, temps_folder, "temp_", temp_config);
+        let temp_collection = TempCollection::new(
+            refs.clone(),
+            db_config.max_temporary_shards,
+            temps_folder,
+            "temp_",
+            temp_config,
+        );
 
         let mut indexes = CHashMap::new();
 
@@ -103,7 +109,7 @@ impl<T: Row> TableShard<T> {
                 IndexType::Hash => IndexTypeValue::Hash(HashIndex::new_from_path(
                     path,
                     Some(format!("{}", index.name)),
-                    Some(10_000_000),
+                    Some(db_config.max_records_per_hash_index_shard),
                 )),
             };
 

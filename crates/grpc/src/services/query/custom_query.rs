@@ -15,8 +15,6 @@ use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tonic::{Request, Response, Status};
 
-pub const CUSTOM_QUERY_TIMEOUT: u64 = 60;
-
 pub mod custom_query_service {
     tonic::include_proto!("sjs.query");
 }
@@ -39,13 +37,12 @@ define_sjs_grpc_service!(CustomQueryService, {
             })
             .await;
 
-        let _ = match result {
-            Ok(_) => (),
-            Err(e) => return Err(Status::internal("Error executing custom query call")),
-        };
+        if result.is_err() {
+            return Err(Status::internal("Error executing custom query call"));
+        }
 
         let timeout = {
-            let timeout_duration = Duration::from_secs(CUSTOM_QUERY_TIMEOUT);
+            let timeout_duration = Duration::from_secs(db.db_config.custom_query_timeout);
             tokio::time::sleep(timeout_duration)
         };
 

@@ -5,6 +5,7 @@ use crate::managers::single::table_shard::TableShard;
 use crate::row::Row;
 use crate::search::search_manager::QuerySearchManager;
 use chashmap::CHashMap;
+use schemajs_config::DatabaseConfig;
 use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
 use schemajs_data::shard::temp_map_shard::DataWithIndex;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
@@ -42,6 +43,8 @@ pub struct SingleQueryManager<T: Row> {
     pub data_path: Option<PathBuf>,
 
     pub helper_tx: Sender<HelperCall>,
+
+    pub database_config: Arc<DatabaseConfig>,
 }
 
 /// `SingleQueryManager` is responsible for managing all query-related operations
@@ -66,12 +69,16 @@ impl<T: Row> SingleQueryManager<T> {
     ///
     /// Examples
     ///
-    /// ```no_run
+    /// ```no_run, compile_fail
     /// use schemajs_query::managers::single::SingleQueryManager;
     /// use schemajs_query::row_json::RowJson;
     /// let query_manager: SingleQueryManager<RowJson> = SingleQueryManager::new("database-name".to_string());
     /// ```
-    pub fn new(scheme: String, helper_tx: Sender<HelperCall>) -> Self {
+    pub fn new(
+        scheme: String,
+        helper_tx: Sender<HelperCall>,
+        database_config: Arc<DatabaseConfig>,
+    ) -> Self {
         let uuid = Uuid::new_v4();
         let tables = Arc::new(CHashMap::default());
 
@@ -83,6 +90,7 @@ impl<T: Row> SingleQueryManager<T> {
             search_manager: QuerySearchManager::new(tables),
             data_path: None,
             helper_tx,
+            database_config,
         }
     }
 
@@ -92,7 +100,7 @@ impl<T: Row> SingleQueryManager<T> {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```no_run, compile_fail
     /// use schemajs_primitives::table::Table;
     /// use schemajs_query::managers::single::SingleQueryManager;
     /// use schemajs_query::row_json::RowJson;
@@ -111,9 +119,12 @@ impl<T: Row> SingleQueryManager<T> {
                 self.data_path.clone(),
                 self.scheme.as_str(),
                 TempDataShardConfig {
-                    max_offsets: TempOffsetTypes::Custom(Some(1000)),
+                    max_offsets: TempOffsetTypes::Custom(Some(
+                        self.database_config.max_rows_per_temp_shard,
+                    )),
                 },
                 self.helper_tx.clone(),
+                &self.database_config,
             ),
         );
     }
@@ -143,7 +154,7 @@ impl<T: Row> SingleQueryManager<T> {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```no_run, compile_fail
     /// use schemajs_primitives::table::Table;
     /// use schemajs_query::managers::single::SingleQueryManager;
     /// use schemajs_query::row::Row;

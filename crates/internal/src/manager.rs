@@ -24,11 +24,10 @@ impl InternalManager {
     pub fn init(&self) {
         {
             let mut writer = self._engine.write().unwrap();
-            let default_workspace = writer.config.default.clone().unwrap();
-            let default_scheme_name = &default_workspace.scheme_name;
+            let default_scheme_name = writer.config.global.default_scheme.clone();
             {
-                if !writer.contains_db(default_scheme_name) {
-                    writer.add_database(default_scheme_name);
+                if !writer.contains_db(&default_scheme_name) {
+                    writer.add_database(&default_scheme_name);
                 }
             }
 

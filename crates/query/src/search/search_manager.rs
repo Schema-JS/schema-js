@@ -198,7 +198,9 @@ mod test {
     use crate::row::Row;
     use crate::row_json::{RowData, RowJson};
     use crate::search::search_manager::QuerySearchManager;
+    use schemajs_config::DatabaseConfig;
     use schemajs_dirs::create_scheme_js_db;
+    use schemajs_helpers::create_helper_channel;
     use schemajs_index::index_type::IndexType;
     use schemajs_primitives::column::types::{DataTypes, DataValue};
     use schemajs_primitives::column::Column;
@@ -211,11 +213,16 @@ mod test {
         RowJson::from_json(json, tbl).unwrap()
     }
 
-    #[flaky_test::flaky_test]
-    pub fn test_search_manager() {
+    #[flaky_test::flaky_test(tokio)]
+    pub async fn test_search_manager() {
         let test_db = Uuid::new_v4().to_string();
         let db_folder = create_scheme_js_db(None, test_db.as_str());
-        let query_manager = SingleQueryManager::new(test_db.clone());
+        let channel = create_helper_channel(1);
+        let query_manager = SingleQueryManager::new(
+            test_db.clone(),
+            channel.0,
+            Arc::new(DatabaseConfig::default()),
+        );
 
         let tbl = Table::new("users")
             .add_column(Column::new("user_id", DataTypes::String))
@@ -396,10 +403,13 @@ mod test {
 
     #[tokio::test]
     pub async fn test_search_manager_with_drop() {
+        let channel = create_helper_channel(1);
+        let db_config: Arc<DatabaseConfig> = Arc::new(Default::default());
         let test_db = Uuid::new_v4().to_string();
         let db_folder = create_scheme_js_db(None, test_db.as_str());
         {
-            let query_manager = SingleQueryManager::new(test_db.clone());
+            let query_manager =
+                SingleQueryManager::new(test_db.clone(), channel.0.clone(), db_config.clone());
 
             let tbl = get_user_table_for_drop_test();
 
@@ -442,7 +452,8 @@ mod test {
         println!("-------------");
 
         {
-            let query_manager = SingleQueryManager::<RowJson>::new(test_db.clone());
+            let query_manager =
+                SingleQueryManager::<RowJson>::new(test_db.clone(), channel.0, db_config);
             let tbl = get_user_table_for_drop_test();
             query_manager.register_table(tbl);
             let tables = query_manager.tables.clone();

@@ -2,7 +2,7 @@ use crate::engine_db::EngineDb;
 use crate::utils::fs::is_js_or_ts;
 use anyhow::bail;
 use deno_core::ModuleSpecifier;
-use schemajs_config::SchemeJsConfig;
+use schemajs_config::{DatabaseConfig, SchemeJsConfig};
 use schemajs_dirs::create_scheme_js_folder;
 use schemajs_helpers::helper::HelperCall;
 use schemajs_primitives::table::Table;
@@ -87,6 +87,7 @@ impl SchemeJsEngine {
             self.data_path_dir.clone(),
             name,
             self.helper_tx.clone(),
+            self.config.db_config(name),
         )))
     }
 }
@@ -107,8 +108,8 @@ mod test {
     use std::sync::{Arc, RwLock};
     use std::thread;
 
-    #[flaky_test::flaky_test]
-    pub fn test_db_engine() {
+    #[flaky_test::flaky_test(tokio)]
+    pub async fn test_db_engine() {
         let create_helper = create_helper_channel(1);
         let config = SchemeJsConfig::default();
         let db_engine = Arc::new(RwLock::new(SchemeJsEngine::new(

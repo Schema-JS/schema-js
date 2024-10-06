@@ -140,7 +140,7 @@ impl SchemeJsRuntime {
         let conf = ctx.config.clone();
         let current_folder = ctx.current_folder.clone();
 
-        let def_scheme_name = conf.default.clone().unwrap().scheme_name;
+        let def_scheme_name = conf.global.default_scheme.clone();
         let mut databases = conf.workspace.databases.clone();
         databases.push(def_scheme_name.clone());
         let mut evaluated_paths = HashSet::new();
