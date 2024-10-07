@@ -1,9 +1,10 @@
 use parking_lot::RwLock;
 use std::fs::{File, OpenOptions};
 use std::path::Path;
+use std::sync::Arc;
 
 pub struct FileDescriptor {
-    pub file: RwLock<File>,
+    pub file: Arc<RwLock<File>>,
 }
 
 impl FileDescriptor {
@@ -15,7 +16,7 @@ impl FileDescriptor {
             .open(path.clone())?;
 
         Ok(Self {
-            file: RwLock::new(load_file),
+            file: Arc::new(RwLock::new(load_file)),
         })
     }
 }

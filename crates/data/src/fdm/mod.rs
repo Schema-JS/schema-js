@@ -89,3 +89,50 @@ impl FileDescriptorManager {
         }
     }
 }
+
+#[cfg(test)]
+mod fdm_tests {
+    use crate::fdm::{get_fdm, FileDescriptorManager};
+    use std::time::Duration;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_fdm() {
+        let temp_dir = tempdir().unwrap();
+        let temp_dir_path = temp_dir.into_path();
+        FileDescriptorManager::init(3);
+
+        let fs_1 = temp_dir_path.join("1.data");
+        let fs_2 = temp_dir_path.join("2.data");
+        let fs_3 = temp_dir_path.join("3.data");
+        let fs_4 = temp_dir_path.join("4.data");
+
+        let fdm = get_fdm();
+        assert!(fdm.pop_insert(&fs_1).is_some());
+        assert!(fdm.pop_insert(&fs_2).is_some());
+        assert!(fdm.pop_insert(&fs_3).is_some());
+        assert_eq!(fdm.cache.read().len(), 3);
+
+        // Use fs_2
+        let fdm_2 = fdm.clone();
+        let get_val = fdm_2.get(&fs_2.clone()).unwrap();
+        let handle = std::thread::spawn(move || {
+            let _file = get_val.file.write();
+            std::thread::sleep(Duration::from_secs(5));
+        });
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let get_fdm_2 = fdm.get(&fs_2);
+        assert!(get_fdm_2.unwrap().file.is_locked_exclusive());
+
+        assert!(fdm.pop_insert(&fs_4).is_some());
+        let mut bools = [fdm.get(&fs_1).is_some(), fdm.get(&fs_3).is_some()];
+        bools.sort_by(|a, b| b.cmp(a));
+        assert_eq!(bools[0], true);
+        assert_eq!(bools[1], false);
+        assert!(fdm.get(&fs_4).is_some());
+        tokio::time::sleep(Duration::from_secs(6)).await;
+        let get_fdm_2 = fdm.get(&fs_2);
+        assert!(get_fdm_2.is_some());
+        assert!(!get_fdm_2.unwrap().file.is_locked_exclusive());
+    }
+}
