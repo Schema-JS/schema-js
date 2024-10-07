@@ -227,10 +227,8 @@ impl<T: Row> SingleQueryManager<T> {
                 if !master_insert {
                     table_shard.temps.insert(&vec_of_slices)?;
                 } else {
-                    let mut data_lock = table_shard
-                        .data
-                        .write()
-                        .map_err(|e| QueryError::InvalidInsertion)?;
+                    let mut data_lock = table_shard.data.write();
+
                     for row in vec_of_slices {
                         let pointer = data_lock.insert_rows(&[row]);
 

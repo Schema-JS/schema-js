@@ -30,4 +30,6 @@ config_constants! {
 
     const DEFAULT_GRPC_HOST: &'static str = "[::1]:34244";
     const DEFAULT_CUSTOM_QUERY_TIMEOUT: u64 = 30;
+
+    const DEFAULT_MAX_FILE_DESCRIPTORS: usize = 2500;
 }

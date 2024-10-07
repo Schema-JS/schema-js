@@ -1,9 +1,9 @@
 mod default_config_values;
 
 use crate::default_config_values::{
-    get_DefaultCustomQueryTimeout, get_MaxRecordsPerHashIndexShard, get_MaxRowsPerShard,
-    get_MaxRowsPerTempShard, get_MaxTemporaryShards, str_DefaultGrpcHost, str_DefaultRootPwd,
-    str_DefaultRootUser, str_DefaultSchemeName,
+    get_DefaultCustomQueryTimeout, get_DefaultMaxFileDescriptors, get_MaxRecordsPerHashIndexShard,
+    get_MaxRowsPerShard, get_MaxRowsPerTempShard, get_MaxTemporaryShards, str_DefaultGrpcHost,
+    str_DefaultRootPwd, str_DefaultRootUser, str_DefaultSchemeName,
 };
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,7 @@ pub struct SchemeJsConfig {
     pub global: GlobalConfig,
     pub db: HashMap<String, DatabaseConfig>,
     pub grpc: GrpcConfig,
+    pub process: ProcessConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -122,6 +123,20 @@ impl Default for GrpcConfig {
     }
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct ProcessConfig {
+    #[serde(default = "get_DefaultMaxFileDescriptors")]
+    pub max_file_descriptors_in_cache: usize,
+}
+
+impl Default for ProcessConfig {
+    fn default() -> Self {
+        Self {
+            max_file_descriptors_in_cache: get_DefaultMaxFileDescriptors(),
+        }
+    }
+}
+
 impl SchemeJsConfig {
     pub fn from_str(toml: &str) -> Result<Self> {
         #[derive(Deserialize, Default)]
@@ -133,6 +148,8 @@ impl SchemeJsConfig {
             pub global: GlobalConfig,
             #[serde(default)]
             pub grpc: GrpcConfig,
+            #[serde(default)]
+            pub process: ProcessConfig,
         }
 
         // Parse the TOML string to SchemeJsConfig
@@ -191,6 +208,7 @@ impl SchemeJsConfig {
             global: global.global,
             db: actual_db,
             grpc: global.grpc,
+            process: global.process,
         })
     }
 

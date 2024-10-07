@@ -2,11 +2,12 @@ use crate::data_handler::DataHandler;
 use crate::errors::ShardErrors;
 use crate::shard::shards::UUID_BYTE_LEN;
 use crate::{I64_SIZE, U64_SIZE};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub const DEFAULT_MAX_OFFSETS: u64 = 100;
@@ -50,13 +51,7 @@ impl DataShardHeader {
             file.clone(),
         );
 
-        // Check if the file is empty
-        let metadata = file
-            .read()
-            .unwrap()
-            .metadata()
-            .expect("Failed to get file metadata");
-        if metadata.len() == 0 {
+        if file.read().len() == 0 {
             header.initialize_empty_file();
         } else {
             header.read_header();
@@ -69,7 +64,6 @@ impl DataShardHeader {
     fn initialize_empty_file(&mut self) {
         self.data
             .write()
-            .unwrap()
             .operate(|file| {
                 file.seek(SeekFrom::Start(0))
                     .expect("Failed to seek to start of file");
@@ -121,7 +115,7 @@ impl DataShardHeader {
 
     /// Reads the header (max_offsets and offsets) from the file
     fn read_header(&mut self) {
-        let reader = self.data.read().unwrap();
+        let reader = self.data.read();
         {
             let max_offset_bytes = reader.get_bytes(0, U64_SIZE).unwrap();
             let max_offset_bytes: [u8; 8] = max_offset_bytes.try_into().unwrap();
@@ -212,12 +206,7 @@ impl DataShardHeader {
 
     pub fn get_offset_value_from_offset_header(&self, offset: usize) -> Option<u64> {
         // Read the pointer
-        let bytes = match self
-            .data
-            .read()
-            .unwrap()
-            .read_pointer(offset as u64, U64_SIZE)
-        {
+        let bytes = match self.data.read().read_pointer(offset as u64, U64_SIZE) {
             Some(bytes) => bytes,
             None => return None,
         };

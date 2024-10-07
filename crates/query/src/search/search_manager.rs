@@ -182,7 +182,7 @@ impl<T: Row> QuerySearchManager<T> {
         let mut results = vec![];
 
         for pointer in pointers {
-            let tbl_data = get_table_shard.data.read().unwrap();
+            let tbl_data = get_table_shard.data.read();
             let data = tbl_data.get_element(pointer as usize).unwrap();
             results.push(T::from_slice(&data, get_table_shard.table.clone()))
         }
@@ -199,6 +199,7 @@ mod test {
     use crate::row_json::{RowData, RowJson};
     use crate::search::search_manager::QuerySearchManager;
     use schemajs_config::DatabaseConfig;
+    use schemajs_data::fdm::FileDescriptorManager;
     use schemajs_dirs::create_scheme_js_db;
     use schemajs_helpers::create_helper_channel;
     use schemajs_index::index_type::IndexType;
@@ -215,6 +216,7 @@ mod test {
 
     #[flaky_test::flaky_test(tokio)]
     pub async fn test_search_manager() {
+        FileDescriptorManager::init(2500);
         let test_db = Uuid::new_v4().to_string();
         let db_folder = create_scheme_js_db(None, test_db.as_str());
         let channel = create_helper_channel(1);
@@ -403,6 +405,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_search_manager_with_drop() {
+        FileDescriptorManager::init(2500);
         let channel = create_helper_channel(1);
         let db_config: Arc<DatabaseConfig> = Arc::new(Default::default());
         let test_db = Uuid::new_v4().to_string();

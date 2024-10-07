@@ -1,10 +1,11 @@
 use crate::data_handler::DataHandler;
 use crate::shard::shards::UUID_BYTE_LEN;
 use crate::{I64_SIZE, U64_SIZE};
+use parking_lot::RwLock;
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -48,14 +49,7 @@ impl KvShardHeader {
             file.clone(),
         );
 
-        // Check if the file is empty
-        let metadata = file
-            .read()
-            .unwrap()
-            .metadata()
-            .expect("Failed to get file metadata");
-
-        let file_len = metadata.len();
+        let file_len = file.read().len();
 
         if file_len == 0 {
             header.initialize_empty_file();
@@ -78,7 +72,6 @@ impl KvShardHeader {
     fn initialize_empty_file(&mut self) {
         self.data
             .write()
-            .unwrap()
             .operate(|file| {
                 file.seek(SeekFrom::Start(0))
                     .expect("Failed to seek to start of file");
@@ -120,7 +113,7 @@ impl KvShardHeader {
     }
 
     fn read_header(&mut self) {
-        let reader = self.data.read().unwrap();
+        let reader = self.data.read();
         {
             let max_capacity_bytes = reader.get_bytes(0, U64_SIZE).unwrap();
             let max_capacity_bytes: [u8; 8] = max_capacity_bytes.try_into().unwrap();

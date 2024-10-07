@@ -96,6 +96,7 @@ impl SchemeJsEngine {
 mod test {
     use crate::engine::SchemeJsEngine;
     use schemajs_config::SchemeJsConfig;
+    use schemajs_data::fdm::FileDescriptorManager;
     use schemajs_data::shard::Shard;
     use schemajs_helpers::create_helper_channel;
     use schemajs_primitives::column::types::{DataTypes, DataValue};
@@ -110,6 +111,7 @@ mod test {
 
     #[flaky_test::flaky_test(tokio)]
     pub async fn test_db_engine() {
+        FileDescriptorManager::init(2500);
         let create_helper = create_helper_channel(1);
         let config = SchemeJsConfig::default();
         let db_engine = Arc::new(RwLock::new(SchemeJsEngine::new(
@@ -224,8 +226,8 @@ mod test {
             let tbl = db.query_manager.tables.get("users").unwrap();
             tbl.temps.reconcile_all();
 
-            let a = tbl.data.read().unwrap().get_element(0).unwrap();
-            let b = tbl.data.read().unwrap().get_element(1).unwrap();
+            let a = tbl.data.read().get_element(0).unwrap();
+            let b = tbl.data.read().get_element(1).unwrap();
 
             let a = RowJson::from_slice(a.as_slice(), tbl.table.clone());
             let b = RowJson::from_slice(b.as_slice(), tbl.table.clone());

@@ -1,30 +1,35 @@
+use crate::fdm::{get_fdm, FileDescriptorManager};
 use memmap2::Mmap;
+use parking_lot::RwLock;
 use std::fs::{File, Metadata, OpenOptions};
-use std::io::Write;
+use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct DataHandler {
     pub path: PathBuf,
+    fdm: Arc<FileDescriptorManager>,
     mmap: Mmap,
-    file: File,
 }
 
 impl DataHandler {
     unsafe fn new_from_path<P: AsRef<Path> + Clone>(path: P) -> std::io::Result<Self> {
-        let load_file = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .append(true)
-            .open(path.clone())
-            .expect("Failed to create shard file");
+        let fdm = get_fdm();
+        if let Some(descriptor) = fdm.pop_insert(&path) {
+            let file = descriptor.file.read();
+            Ok(Self {
+                path: path.as_ref().to_path_buf(),
+                fdm,
+                mmap: Self::mmap(&file)?,
+            })
+        } else {
+            Err(Error::new(ErrorKind::Other, "Too many files open in FDM"))
+        }
+    }
 
-        Ok(Self {
-            path: path.as_ref().to_path_buf(),
-            mmap: Mmap::map(&load_file)?,
-            file: load_file,
-        })
+    unsafe fn mmap(file: &File) -> std::io::Result<Mmap> {
+        Ok(Mmap::map(file)?)
     }
 
     #[cfg(test)]
@@ -32,29 +37,8 @@ impl DataHandler {
         &self.mmap
     }
 
-    #[cfg(test)]
-    pub unsafe fn access_file(&self) -> &File {
-        &self.file
-    }
-
-    unsafe fn new_from_file(path: PathBuf, file: File) -> std::io::Result<Self> {
-        Ok(Self {
-            path,
-            mmap: Mmap::map(&file)?,
-            file,
-        })
-    }
-
     pub unsafe fn new<P: AsRef<Path> + Clone>(path: P) -> std::io::Result<RwLock<Self>> {
         Ok(RwLock::new(Self::new_from_path(path)?))
-    }
-
-    pub unsafe fn new_with_file(path: PathBuf, file: File) -> std::io::Result<RwLock<Self>> {
-        Ok(RwLock::new(Self::new_from_file(path, file)?))
-    }
-
-    pub fn metadata(&self) -> std::io::Result<Metadata> {
-        self.file.metadata()
     }
 
     pub fn len(&self) -> usize {
@@ -74,13 +58,19 @@ impl DataHandler {
     where
         F: FnOnce(&mut File) -> std::io::Result<R>,
     {
-        let cb = callback(&mut self.file)?;
+        let fdm = get_fdm();
+        if let Some(fd) = fdm.get(&self.path) {
+            let mut writer = fd.file.write();
+            let cb = callback(&mut writer)?;
 
-        self.file.flush()?;
+            writer.flush()?;
 
-        let new_mmap = unsafe { Mmap::map(&self.file) };
-        self.mmap = new_mmap?;
+            let new_mmap = unsafe { Self::mmap(&writer) };
+            self.mmap = new_mmap?;
 
-        Ok(cb)
+            Ok(cb)
+        } else {
+            Err(Error::new(ErrorKind::Other, "Too many files open in FDM"))
+        }
     }
 }

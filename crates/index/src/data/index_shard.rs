@@ -1,6 +1,7 @@
 use crate::data::index_data_unit::IndexDataUnit;
 use crate::types::{IndexKey, IndexValue};
 use crate::utils::get_entry_size;
+use parking_lot::RwLock;
 use schemajs_data::errors::ShardErrors;
 use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::kv::config::KvShardConfig;
@@ -12,7 +13,6 @@ use std::io::{Seek, Write};
 use std::marker::PhantomData;
 use std::os::unix::fs::FileExt;
 use std::path::Path;
-use std::sync::RwLock;
 
 #[derive(Debug)]
 pub struct IndexShard<K: IndexKey, V: IndexValue> {
@@ -75,9 +75,9 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
 
     pub fn get_entry(&self, index: usize, global: bool) -> Option<IndexEntry> {
         let get_el = if !global {
-            self.data.read().unwrap().get_element_from_master(index)
+            self.data.read().get_element_from_master(index)
         } else {
-            self.data.read().unwrap().get_element(index)
+            self.data.read().get_element(index)
         };
 
         match get_el {
@@ -120,7 +120,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
 
         let entries: Vec<&[u8]> = data_units.iter().map(|i| i.as_slice()).collect();
 
-        self.data.write().unwrap().insert_rows(&entries);
+        self.data.write().insert_rows(&entries);
 
         if self.binary_order {
             self.keep_binary_order();
@@ -132,12 +132,12 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
     }
 
     pub fn binary_search(&self, target: K) -> Option<(u64, K, V)> {
-        let reader = self.data.read().unwrap();
+        let reader = self.data.read();
         let breaking_point = reader.current_master_shard.breaking_point();
         match breaking_point {
             None => self.raw_binary_search(&reader.current_master_shard, target),
             Some(_) => {
-                let past_master_shards = reader.past_master_shards.read().unwrap();
+                let past_master_shards = reader.past_master_shards.read();
 
                 let shards = {
                     let mut shards = vec![&reader.current_master_shard];
@@ -207,13 +207,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
     }
 
     fn keep_binary_order(&self) {
-        let mut i = {
-            self.data
-                .read()
-                .unwrap()
-                .current_master_shard
-                .get_last_index()
-        };
+        let mut i = { self.data.read().current_master_shard.get_last_index() };
 
         while i > 0 {
             let (curr_index, _, curr_original_el) = self.get_kv(i as usize, false).unwrap();
@@ -221,8 +215,8 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
 
             match curr_index.cmp(&prev_index) {
                 Ordering::Less => {
-                    let mut writer = self.data.write().unwrap();
-                    let mut curr_shard = writer.current_master_shard.data.write().unwrap();
+                    let mut writer = self.data.write();
+                    let mut curr_shard = writer.current_master_shard.data.write();
                     curr_shard
                         .operate(|file| {
                             writer

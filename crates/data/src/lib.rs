@@ -1,5 +1,6 @@
 pub mod data_handler;
 pub mod errors;
+pub mod fdm;
 pub mod shard;
 pub mod temp_offset_types;
 pub mod utils;

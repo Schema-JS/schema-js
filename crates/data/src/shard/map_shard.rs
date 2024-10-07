@@ -2,10 +2,8 @@ use crate::errors::ShardErrors;
 use crate::shard::{AvailableSpace, Shard, ShardConfig};
 use crate::utils::fs::list_files_with_prefix;
 use indexmap::IndexMap;
-use std::collections::HashMap;
-use std::marker::PhantomData;
+use parking_lot::RwLock;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -124,7 +122,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
             // Add to past master
             {
                 let old_master = std::mem::replace(&mut self.current_master_shard, shard);
-                let mut past_ms_writer = self.past_master_shards.write().unwrap();
+                let mut past_ms_writer = self.past_master_shards.write();
                 let (_, shard_id, _) =
                     Self::extract_shard_signature(old_master.get_path()).unwrap();
                 past_ms_writer.insert(shard_id, old_master);
@@ -152,7 +150,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
             match breaking_point {
                 None => local_index as usize,
                 Some(breaking_point) => {
-                    let reader = self.past_master_shards.read().unwrap();
+                    let reader = self.past_master_shards.read();
                     let curr_items = reader.len() * breaking_point as usize;
                     curr_items + local_index as usize
                 }
@@ -193,7 +191,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
             Some(breaking_point) => {
                 let breaking_point_usize = breaking_point as usize;
 
-                let reader = self.past_master_shards.read().unwrap();
+                let reader = self.past_master_shards.read();
                 let shard_reversed = {
                     let mut combined_shards: Vec<&S> = reader.values().rev().collect();
                     combined_shards.push(&self.current_master_shard);
@@ -220,15 +218,18 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
 
 #[cfg(test)]
 mod test {
+    use crate::fdm::FileDescriptorManager;
     use crate::shard::map_shard::MapShard;
     use crate::shard::shards::data_shard::config::DataShardConfig;
     use crate::shard::shards::data_shard::shard::DataShard;
     use crate::shard::Shard;
-    use std::sync::{Arc, RwLock};
+    use parking_lot::RwLock;
+    use std::sync::Arc;
     use uuid::Uuid;
 
     #[tokio::test]
     pub async fn test_context_creation_empty_table() {
+        FileDescriptorManager::init(2500);
         let fake_empty_table_path = std::env::current_dir()
             .unwrap()
             .join("./test_cases/fake-db-folder/fake-empty-table");
@@ -239,7 +240,7 @@ mod test {
             DataShardConfig { max_offsets: None },
         );
 
-        assert!(context.past_master_shards.read().unwrap().is_empty());
+        assert!(context.past_master_shards.read().is_empty());
         assert_eq!(
             context
                 .current_master_shard
@@ -254,6 +255,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_context_creation_partial_table() {
+        FileDescriptorManager::init(2500);
         let fake_partial_folder_path = std::env::current_dir()
             .unwrap()
             .join("./test_cases/fake-db-folder/fake-partial-folder");
@@ -262,7 +264,7 @@ mod test {
             "data_",
             DataShardConfig { max_offsets: None },
         );
-        assert!(!context.past_master_shards.read().unwrap().is_empty());
+        assert!(!context.past_master_shards.read().is_empty());
         assert_eq!(
             context
                 .current_master_shard
@@ -273,11 +275,12 @@ mod test {
                 .unwrap(),
             "data_38af2223-d339-4f45-994e-eef41a69fcaa_2.data"
         );
-        assert_eq!(context.past_master_shards.read().unwrap().len(), 2);
+        assert_eq!(context.past_master_shards.read().len(), 2);
     }
 
     #[tokio::test]
     pub async fn test_shard_automatic_creation() {
+        FileDescriptorManager::init(2500);
         let fake_partial_folder_path = std::env::current_dir().unwrap().join(format!(
             "./test_cases/fake-db-folder/{}",
             Uuid::new_v4().to_string()
@@ -297,19 +300,19 @@ mod test {
 
         let ref_map1 = arc.clone();
         let thread1 = std::thread::spawn(move || {
-            ref_map1.write().unwrap().insert_rows(&[&b"1".to_vec()]);
+            ref_map1.write().insert_rows(&[&b"1".to_vec()]);
         });
 
         let ref_map1 = arc.clone();
         let thread2 = std::thread::spawn(move || {
-            ref_map1.write().unwrap().insert_rows(&[&b"2".to_vec()]);
+            ref_map1.write().insert_rows(&[&b"2".to_vec()]);
         });
 
         thread1.join().unwrap();
         thread2.join().unwrap();
 
-        let map_reader = arc.read().unwrap();
-        let past_reader = map_reader.past_master_shards.read().unwrap();
+        let map_reader = arc.read();
+        let past_reader = map_reader.past_master_shards.read();
         let past_master_shards = past_reader.len();
         assert_eq!(past_master_shards, 1);
         let item1 = past_reader
@@ -335,6 +338,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_global_get_element() {
+        FileDescriptorManager::init(2500);
         let fake_partial_folder_path = std::env::current_dir().unwrap().join(format!(
             "./test_cases/fake-db-folder/{}",
             Uuid::new_v4().to_string()

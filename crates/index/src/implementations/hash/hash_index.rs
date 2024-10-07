@@ -93,11 +93,13 @@ mod test {
     use crate::index_keys::IndexKeyType;
     use crate::keys::index_key_sha256::IndexKeySha256;
     use crate::types::Index;
+    use schemajs_data::fdm::FileDescriptorManager;
     use tempfile::tempdir;
     use uuid::Uuid;
 
     #[tokio::test]
     pub async fn test_binary_search_with_composite_keys() {
+        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
 
         let hashindx = temp_dir.as_ref().to_path_buf().join("hashindx");
@@ -112,6 +114,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_binary_search_with_composite_keys_and_limit() {
+        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
 
         let hashindx = temp_dir.as_ref().to_path_buf().join("hashindx");
@@ -126,6 +129,7 @@ mod test {
     }
 
     fn add_data(index: &mut HashIndex) {
+        FileDescriptorManager::init(2500);
         let usernames = vec![
             String::from("user1"),
             String::from("user2"),

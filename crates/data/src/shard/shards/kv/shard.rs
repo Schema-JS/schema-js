@@ -5,11 +5,12 @@ use crate::shard::shards::kv::shard_header::KvShardHeader;
 use crate::shard::shards::kv::util::get_element_offset;
 use crate::shard::{AvailableSpace, Shard};
 use crate::utils::flatten;
+use parking_lot::RwLock;
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -24,7 +25,7 @@ pub struct KvShard {
 
 impl KvShard {
     pub fn get_element(&self, index: usize) -> Option<Vec<u8>> {
-        let reader = self.data.read().unwrap();
+        let reader = self.data.read();
         let starting_point = Self::get_element_offset(index, self.value_size) as u64;
         reader.read_pointer(starting_point, self.value_size)
     }
@@ -98,7 +99,6 @@ impl Shard<KvShardConfig> for KvShard {
     fn get_last_index(&self) -> i64 {
         self.header
             .read()
-            .unwrap()
             .items_len
             .checked_sub(1)
             .map_or(-1, |v| v as i64)
@@ -121,7 +121,7 @@ impl Shard<KvShardConfig> for KvShard {
     }
 
     fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
-        let mut writer = self.data.write().unwrap();
+        let mut writer = self.data.write();
         writer
             .operate(|file| {
                 let _ = file
@@ -137,7 +137,6 @@ impl Shard<KvShardConfig> for KvShard {
                     let new_len = self
                         .header
                         .write()
-                        .unwrap()
                         .increment_len(Some(data.len() as u64), file);
                     new_len
                 };
@@ -155,6 +154,7 @@ impl Shard<KvShardConfig> for KvShard {
 
 #[cfg(test)]
 mod test {
+    use crate::fdm::FileDescriptorManager;
     use crate::shard::shards::kv::config::KvShardConfig;
     use crate::shard::shards::kv::shard::KvShard;
     use crate::shard::Shard;
@@ -163,6 +163,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_kv_shard() {
+        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir
             .path()
@@ -185,7 +186,7 @@ mod test {
             ])
             .unwrap();
 
-        assert_eq!(kv_shard.header.read().unwrap().items_len, 3);
+        assert_eq!(kv_shard.header.read().items_len, 3);
 
         assert_eq!(
             kv_shard.get_element(1).unwrap(),

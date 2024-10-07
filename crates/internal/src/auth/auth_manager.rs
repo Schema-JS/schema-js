@@ -1,6 +1,5 @@
 use crate::auth::types::{UserContext, VerifyUserArgs};
 use crate::users::user::{create_user, User, INTERNAL_USER_TABLE, INTERNAL_USER_TABLE_NAME};
-use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
 use schemajs_engine::engine::SchemeJsEngine;
 use schemajs_engine::engine_db::EngineDb;

@@ -286,10 +286,12 @@ dependencies = [
  "dashmap 6.1.0",
  "deno_ast",
  "deno_core",
+ "lru",
  "once_cell",
  "r2d2",
  "schemajs_config",
  "schemajs_core",
+ "schemajs_data",
  "schemajs_engine",
  "schemajs_helpers",
  "schemajs_internal",
@@ -1835,6 +1837,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
+name = "lru"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37ee39891760e7d94734f6f63fedc29a2e4a152f836120753a72503f09fcf904"
+dependencies = [
+ "hashbrown 0.14.5",
+]
+
+[[package]]
 name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2661,7 +2672,9 @@ dependencies = [
  "borsh",
  "enum-as-inner",
  "indexmap 2.2.6",
+ "lru",
  "memmap2",
+ "parking_lot 0.12.3",
  "rand 0.8.5",
  "serde",
  "sha2",
@@ -2745,6 +2758,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "enum-as-inner",
+ "parking_lot 0.12.3",
  "rand 0.8.5",
  "schemajs_data",
  "serde",
@@ -2829,6 +2843,7 @@ dependencies = [
  "chashmap",
  "enum-as-inner",
  "flaky_test",
+ "parking_lot 0.12.3",
  "schemajs_config",
  "schemajs_data",
  "schemajs_dirs",

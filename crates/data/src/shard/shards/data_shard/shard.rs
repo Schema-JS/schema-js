@@ -5,10 +5,11 @@ use crate::shard::shards::data_shard::shard_header::DataShardHeader;
 use crate::shard::{AvailableSpace, Shard};
 use crate::utils::flatten;
 use crate::U64_SIZE;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::io::{Error, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -22,7 +23,7 @@ pub struct DataShard {
 impl DataShard {
     /// Reads data of type T from the given position to the next position in offsets
     pub fn read_item(&self, offset_position_in_header: usize) -> Result<Vec<u8>, ShardErrors> {
-        let header_read = self.header.read().unwrap();
+        let header_read = self.header.read();
 
         let item_pos =
             { header_read.get_offset_value_from_offset_header(offset_position_in_header) };
@@ -30,7 +31,7 @@ impl DataShard {
         match item_pos {
             None => Err(ShardErrors::UnknownOffset),
             Some(start_pos) => {
-                let data_reader = self.data.read().unwrap();
+                let data_reader = self.data.read();
                 let end_pos = {
                     let next_offset_pos = offset_position_in_header + U64_SIZE;
                     assert!(next_offset_pos <= header_read.max_offset_positions);
@@ -89,13 +90,13 @@ impl Shard<DataShardConfig> for DataShard {
     }
 
     fn has_space(&self) -> bool {
-        let header = self.header.read().unwrap();
+        let header = self.header.read();
 
         header.has_space()
     }
 
     fn breaking_point(&self) -> Option<u64> {
-        Some(self.header.read().unwrap().get_max_offsets())
+        Some(self.header.read().get_max_offsets())
     }
 
     fn get_path(&self) -> PathBuf {
@@ -103,14 +104,14 @@ impl Shard<DataShardConfig> for DataShard {
     }
 
     fn get_last_index(&self) -> i64 {
-        let header_reader = self.header.read().unwrap();
+        let header_reader = self.header.read();
         let last_index = header_reader.get_last_offset_index();
 
         last_index
     }
 
     fn read_item_from_index(&self, index: usize) -> Result<Vec<u8>, ShardErrors> {
-        let header = self.header.read().unwrap();
+        let header = self.header.read();
         let offset_pos_in_header = header.get_offset_pos_by_index(index);
         match offset_pos_in_header {
             None => Err(ShardErrors::UnknownOffset),
@@ -119,14 +120,14 @@ impl Shard<DataShardConfig> for DataShard {
     }
 
     fn available_space(&self) -> AvailableSpace {
-        let header = self.header.read().unwrap();
+        let header = self.header.read();
 
         AvailableSpace::Fixed(header.available_space())
     }
 
     fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
-        let mut header_write = self.header.write().unwrap();
-        let op = self.data.write().unwrap().operate(|file| {
+        let mut header_write = self.header.write();
+        let op = self.data.write().operate(|file| {
             let write_data = flatten(data);
 
             // Calculate the current end of the file
@@ -169,6 +170,7 @@ impl Shard<DataShardConfig> for DataShard {
 #[cfg(test)]
 mod test {
     use crate::errors::ShardErrors;
+    use crate::fdm::FileDescriptorManager;
     use crate::shard::shards::data_shard::config::DataShardConfig;
     use crate::shard::shards::data_shard::shard::DataShard;
     use crate::shard::Shard;
@@ -180,6 +182,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_data_shard() {
+        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir
             .path()
@@ -234,6 +237,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_data_shard_from_file() {
+        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir
             .path()
@@ -277,6 +281,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_data_shard_threads() {
+        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir
             .path()

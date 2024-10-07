@@ -1,8 +1,9 @@
 use crate::shard::map_shard::MapShard;
 use crate::shard::temp_map_shard::TempMapShard;
 use crate::shard::{Shard, ShardConfig, TempShardConfig};
+use parking_lot::RwLock;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct ShardCollection<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>> {

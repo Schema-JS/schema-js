@@ -2,9 +2,10 @@ use crate::errors::ShardErrors;
 use crate::shard::map_shard::MapShard;
 use crate::shard::temp_map_shard::TempMapShard;
 use crate::shard::{Shard, ShardConfig, TempShardConfig};
+use parking_lot::RwLock;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct TempCollection<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>> {
@@ -48,15 +49,13 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
 
     pub fn reconcile_all(&self) {
         for temp in self.temps.iter() {
-            temp.write().unwrap().reconcile_all()
+            temp.write().reconcile_all()
         }
     }
 
     pub fn insert(&self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
-        let mut next_shard = self
-            .get_next_shard()
-            .write()
-            .map_err(|_e| ShardErrors::InvalidLocking)?;
+        let mut next_shard = self.get_next_shard().write();
+
         next_shard.raw_insert_rows(data)
     }
 }

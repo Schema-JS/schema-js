@@ -1,10 +1,11 @@
 use crate::errors::ShardErrors;
 use crate::shard::map_shard::MapShard;
 use crate::shard::{Shard, ShardConfig, TempShardConfig};
+use parking_lot::RwLock;
 use std::fmt::{Debug, Formatter};
 use std::ops::Range;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct DataWithIndex {
@@ -125,7 +126,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
     }
 
     pub fn reconcile_all(&mut self) {
-        let mut parent_writer = self.parent_shard.write().unwrap();
+        let mut parent_writer = self.parent_shard.write();
 
         for from_shard in self.temp_shards.iter() {
             self.reconcile(from_shard, &mut parent_writer);
@@ -140,7 +141,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
 
             if let Some(index) = index {
                 if let Some(shard) = self.temp_shards.get(index) {
-                    let mut parent_shard = self.parent_shard.write().unwrap();
+                    let mut parent_shard = self.parent_shard.write();
                     self.reconcile(shard, &mut parent_shard);
                     index
                 } else {
@@ -157,14 +158,16 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
 
 #[cfg(test)]
 mod test {
+    use crate::fdm::FileDescriptorManager;
     use crate::shard::map_shard::MapShard;
     use crate::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
     use crate::shard::shards::data_shard::shard::DataShard;
     use crate::shard::temp_map_shard::TempMapShard;
     use crate::shard::Shard;
     use crate::temp_offset_types::TempOffsetTypes;
+    use parking_lot::RwLock;
     use std::path::PathBuf;
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     #[tokio::test]
@@ -206,11 +209,9 @@ mod test {
         // It has still not be reconciled, therefore parent doesn't contain items
         let parent_items_len = parent_shard
             .read()
-            .unwrap()
             .current_master_shard
             .header
             .read()
-            .unwrap()
             .get_last_offset_index();
         assert_eq!(parent_items_len, -1);
 
@@ -245,23 +246,19 @@ mod test {
         // Now that's reconciled. Parent should have the two records inserted.
         let parent_items_len = parent_shard
             .read()
-            .unwrap()
             .current_master_shard
             .header
             .read()
-            .unwrap()
             .get_last_offset_index();
         assert_eq!(parent_items_len, 1);
 
         let parent_item_1 = parent_shard
             .read()
-            .unwrap()
             .current_master_shard
             .read_item_from_index(0)
             .unwrap();
         let parent_item_2 = parent_shard
             .read()
-            .unwrap()
             .current_master_shard
             .read_item_from_index(1)
             .unwrap();

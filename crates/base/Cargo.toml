@@ -13,6 +13,7 @@ schemajs_engine = { version = "0.1.0", path = "../engine" }
 schemajs_core = { version = "0.1.0", path = "../core" }
 schemajs_module_loader = { version = "0.1.0", path = "../module_loader" }
 schemajs_internal = { version = "0.1.0", path = "../internal" }
+schemajs_data = { version = "0.1.0", path = "../data" }
 serde.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
@@ -26,6 +27,7 @@ serde_json.workspace = true
 once_cell.workspace = true
 scopeguard.workspace = true
 dashmap.workspace = true
+lru.workspace = true
 
 [build-dependencies]
 schemajs_core = { version = "0.1.0", path = "../core" }

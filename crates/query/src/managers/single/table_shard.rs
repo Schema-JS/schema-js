@@ -1,5 +1,6 @@
 use crate::row::Row;
 use chashmap::CHashMap;
+use parking_lot::RwLock;
 use schemajs_config::DatabaseConfig;
 use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
@@ -18,7 +19,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 
 /// `TableShard` is a structure that manages the sharding of a specific table's data.
@@ -142,35 +143,32 @@ impl<T: Row> TableShard<T> {
             let table = self.table.clone();
             let helper_tx = self.helper_tx.clone();
 
-            temp_shard
-                .write()
-                .unwrap()
-                .set_on_reconcile(Box::new(move |rows| {
-                    let rows: Vec<(T, u64)> = rows
-                        .into_iter()
-                        .map(|row| (T::from_slice(&row.data, table.clone()), row.index))
-                        .collect();
+            temp_shard.write().set_on_reconcile(Box::new(move |rows| {
+                let rows: Vec<(T, u64)> = rows
+                    .into_iter()
+                    .map(|row| (T::from_slice(&row.data, table.clone()), row.index))
+                    .collect();
 
-                    {
-                        // TODO: move row->to_json inside the thread
-                        let vals: Vec<Value> = rows
-                            .iter()
-                            .filter_map(|(row, _)| row.to_json().ok())
-                            .collect();
-                        let helper_tx = helper_tx.clone();
-                        let tbl_name = table.name.clone();
-                        tokio::spawn(async move {
-                            let _ = helper_tx
-                                .send(HelperCall::InsertHook {
-                                    rows: vals,
-                                    table: tbl_name,
-                                })
-                                .await;
-                        });
-                    }
-                    Self::insert_indexes(table.clone(), indexes.clone(), rows);
-                    Ok(())
-                }))
+                {
+                    // TODO: move row->to_json inside the thread
+                    let vals: Vec<Value> = rows
+                        .iter()
+                        .filter_map(|(row, _)| row.to_json().ok())
+                        .collect();
+                    let helper_tx = helper_tx.clone();
+                    let tbl_name = table.name.clone();
+                    tokio::spawn(async move {
+                        let _ = helper_tx
+                            .send(HelperCall::InsertHook {
+                                rows: vals,
+                                table: tbl_name,
+                            })
+                            .await;
+                    });
+                }
+                Self::insert_indexes(table.clone(), indexes.clone(), rows);
+                Ok(())
+            }))
         }
     }
 

@@ -19,3 +19,5 @@ sha2.workspace = true
 rand.workspace = true
 indexmap.workspace = true
 thiserror.workspace = true
+parking_lot.workspace = true
+lru.workspace = true

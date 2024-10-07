@@ -1,5 +1,6 @@
 use crate::manager::SchemeJsManager;
 use schemajs_config::SchemeJsConfig;
+use schemajs_data::fdm::FileDescriptorManager;
 use schemajs_engine::engine::SchemeJsEngine;
 use schemajs_helpers::helper::HelperCall;
 use schemajs_internal::manager::InternalManager;
@@ -40,6 +41,14 @@ impl SjsContext {
         };
 
         let config = Arc::new(SchemeJsConfig::new(config_file.clone())?);
+
+        {
+            // Must be initialized right after the config.
+            // Otherwise there's a possibility that `get_fdm` might panic
+            // Because it has not yet been initialized
+            FileDescriptorManager::init(config.process.max_file_descriptors_in_cache)
+        }
+
         let mut engine = Arc::new(RwLock::new(SchemeJsEngine::new(
             data_path.clone(),
             config.clone(),
