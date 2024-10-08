@@ -14,8 +14,6 @@ SchemaJS is a powerful NoSQL database inspired by [Google Datastore](https://clo
 
 With SchemaJS, you can manage your data using familiar JavaScript syntax, enabling seamless integration with modern JavaScript-based applications. Its primary goal is to deliver a highly customizable and dynamic query language while maintaining the simplicity and ease of use that JavaScript developers expect.
 
-SchemaJS supports defining everything—from tables and indexes to complex query functions—directly within JavaScript files, giving developers full control over the structure and behavior of their databases. Whether you're building small-scale projects or scalable, distributed systems, SchemaJS adapts to your needs without sacrificing performance.
-
 ### _Why JavaScript?_
 
 > JavaScript has become the backbone of modern web development, with many applications built using JavaScript or its ecosystem. By enabling SchemaJS to run in the same language, developers can now unify their front-end, back-end, and database logic using a single language. This minimizes the context switching between different technologies, making development faster and more intuitive.
