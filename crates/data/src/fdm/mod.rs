@@ -42,7 +42,7 @@ impl FileDescriptorManager {
         let path_buf = path.as_ref().to_path_buf();
         let descriptor = Arc::new(FileDescriptor::new_from_path(path).ok()?);
         cache.push(path_buf, descriptor.clone());
-        return Some(descriptor);
+        Some(descriptor)
     }
 
     // Pop a file descriptor if it's available (i.e., not busy)
@@ -82,15 +82,13 @@ impl FileDescriptorManager {
 
     pub fn remove_paths(&self, paths: Vec<PathBuf>) {
         let fdm = self.cache.clone();
-        if !paths.is_empty() {
-            if self.max_size >= { fdm.read().len() } {
-                tokio::spawn(async move {
-                    let mut writer = fdm.write();
-                    for path in paths.iter() {
-                        writer.pop(path);
-                    }
-                });
-            }
+        if !paths.is_empty() && self.max_size >= { fdm.read().len() } {
+            tokio::spawn(async move {
+                let mut writer = fdm.write();
+                for path in paths.iter() {
+                    writer.pop(path);
+                }
+            });
         }
     }
 }

@@ -16,6 +16,5 @@ pub fn list_files_with_prefix<P: AsRef<Path> + Clone>(
                 None
             }
         })
-        .collect::<Vec<_>>()
-        .into())
+        .collect::<Vec<_>>())
 }

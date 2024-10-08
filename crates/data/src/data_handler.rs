@@ -1,7 +1,7 @@
 use crate::fdm::FileDescriptorManager;
 use memmap2::Mmap;
 use parking_lot::RwLock;
-use std::fs::{File, Metadata, OpenOptions};
+use std::fs::File;
 use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -31,7 +31,7 @@ impl DataHandler {
     }
 
     unsafe fn mmap(file: &File) -> std::io::Result<Mmap> {
-        Ok(Mmap::map(file)?)
+        Mmap::map(file)
     }
 
     #[cfg(test)]
@@ -48,6 +48,10 @@ impl DataHandler {
 
     pub fn len(&self) -> usize {
         self.mmap.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn get_bytes(&self, from: usize, to: usize) -> Option<&[u8]> {

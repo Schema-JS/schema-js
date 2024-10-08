@@ -11,7 +11,7 @@ impl TempOffsetTypes {
     pub fn get_real_offset(&self) -> Option<u64> {
         match self {
             TempOffsetTypes::WALBased => Some(1),
-            TempOffsetTypes::Custom(val) => val.clone(),
+            TempOffsetTypes::Custom(val) => *val,
         }
     }
 }

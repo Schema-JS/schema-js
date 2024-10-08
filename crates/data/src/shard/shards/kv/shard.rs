@@ -150,7 +150,7 @@ impl Shard<KvShardConfig> for KvShard {
                 Ok(new_len)
             })
             .map(|e| e)
-            .map_err(|e| ShardErrors::ErrorAddingEntry)
+            .map_err(|_| ShardErrors::ErrorAddingEntry)
     }
 
     fn get_id(&self) -> String {

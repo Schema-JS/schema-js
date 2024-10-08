@@ -3,9 +3,8 @@ use crate::errors::ShardErrors;
 use crate::shard::shards::UUID_BYTE_LEN;
 use crate::{I64_SIZE, U64_SIZE};
 use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -29,7 +28,7 @@ impl DataShardHeader {
         Self {
             max_offsets,
             last_offset_index: -1,
-            id: uuid.unwrap_or_else(|| Uuid::new_v4()),
+            id: uuid.unwrap_or_else(Uuid::new_v4),
             max_offset_positions: Self::calculate_offset_pos(max_offsets as usize),
             data,
             zero_offset: Self::calculate_offset_pos(0),
@@ -72,7 +71,7 @@ impl DataShardHeader {
                 // Keep this in the order of the struct
                 let max_offsets_size = U64_SIZE;
                 let last_offset_index_size = I64_SIZE;
-                let offsets_size = ((self.max_offsets as usize) * U64_SIZE);
+                let offsets_size = (self.max_offsets as usize) * U64_SIZE;
                 let id_len = UUID_BYTE_LEN as usize;
 
                 // Calculate header size
@@ -153,13 +152,13 @@ impl DataShardHeader {
             // Write the new offset value to the file
             let offset_position = self.get_offset_pos_by_index(available_index);
             match offset_position {
-                None => return Err(ShardErrors::OutOfPositions),
+                None => Err(ShardErrors::OutOfPositions),
                 Some(pos) => {
                     let offset_bytes = value.to_le_bytes();
                     file.write_at(&offset_bytes, pos as u64)
                         .expect("Failed to write offset to file");
                     file.write_at(&available_index.to_le_bytes(), U64_SIZE as u64)
-                        .map_err(|e| ShardErrors::ErrorAddingHeaderOffset)?;
+                        .map_err(|_| ShardErrors::ErrorAddingHeaderOffset)?;
                     self.last_offset_index = available_index as i64;
                     Ok(())
                 }

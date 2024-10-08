@@ -1,6 +1,5 @@
 use enum_as_inner::EnumAsInner;
 use serde::{Deserialize, Serialize};
-use std::sync::PoisonError;
 use thiserror::Error;
 
 #[derive(Debug, Clone, EnumAsInner, Serialize, Deserialize, Error)]

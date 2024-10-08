@@ -64,11 +64,9 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
     }
 
     fn create_shard(&self) -> S {
-        let shard_path = self.folder.join(format!(
-            "{}{}",
-            self.prefix.clone(),
-            Uuid::new_v4().to_string()
-        ));
+        let shard_path = self
+            .folder
+            .join(format!("{}{}", self.prefix.clone(), Uuid::new_v4()));
 
         S::new(
             shard_path,

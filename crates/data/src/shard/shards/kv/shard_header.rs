@@ -1,6 +1,6 @@
 use crate::data_handler::DataHandler;
 use crate::shard::shards::UUID_BYTE_LEN;
-use crate::{I64_SIZE, U64_SIZE};
+use crate::U64_SIZE;
 use parking_lot::RwLock;
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
@@ -65,8 +65,7 @@ impl KvShardHeader {
         let items_len_size = U64_SIZE;
         let value_size = U64_SIZE;
         let id_len = UUID_BYTE_LEN as usize;
-        let header_size = max_capacity_size + items_len_size + value_size + id_len;
-        header_size
+        max_capacity_size + items_len_size + value_size + id_len
     }
 
     fn initialize_empty_file(&mut self) {

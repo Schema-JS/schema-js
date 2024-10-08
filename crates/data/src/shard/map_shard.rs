@@ -52,7 +52,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
 
         let mut past_master_shards = IndexMap::new();
 
-        for &(number, ref uuid, ref path) in &sorted_files {
+        for &(_, ref uuid, ref path) in &sorted_files {
             if path != &current_master_shard {
                 past_master_shards.insert(
                     uuid.clone(),
@@ -123,16 +123,16 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
                 let shard_id = Uuid::new_v4();
                 let shard_path = self.shards_folder.clone().join(Self::generate_shard_name(
                     self.shard_prefix.as_str(),
-                    shard_id.clone(),
+                    shard_id,
                     new_shard_number,
                 ));
-                let new_shard = S::new(
+
+                S::new(
                     shard_path,
                     self.config.clone(),
                     Some(shard_id),
                     self.fdm.clone(),
-                );
-                new_shard
+                )
             };
 
             // Add to past master

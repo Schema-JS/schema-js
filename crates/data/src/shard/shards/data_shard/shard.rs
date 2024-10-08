@@ -7,8 +7,7 @@ use crate::shard::{AvailableSpace, Shard};
 use crate::utils::flatten;
 use crate::U64_SIZE;
 use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
-use std::io::{Error, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::io::{Error, ErrorKind, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -111,9 +110,7 @@ impl Shard<DataShardConfig> for DataShard {
 
     fn get_last_index(&self) -> i64 {
         let header_reader = self.header.read();
-        let last_index = header_reader.get_last_offset_index();
-
-        last_index
+        header_reader.get_last_offset_index()
     }
 
     fn read_item_from_index(&self, index: usize) -> Result<Vec<u8>, ShardErrors> {
@@ -150,7 +147,7 @@ impl Shard<DataShardConfig> for DataShard {
             for item in data {
                 header_write
                     .add_next_offset(curr_offset, file)
-                    .map_err(|e| Error::new(ErrorKind::OutOfMemory, "Out of position"))?;
+                    .map_err(|_| Error::new(ErrorKind::OutOfMemory, "Out of position"))?;
                 curr_offset += item.len() as u64;
             }
 
