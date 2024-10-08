@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
+use uuid::Uuid;
 
 pub struct SjsContext {
     pub config_file: PathBuf,
@@ -49,7 +50,10 @@ impl SjsContext {
         ));
 
         let data_path = if cfg!(test) {
-            let data_folder = folder_path.clone().join(".data");
+            let data_folder = folder_path
+                .clone()
+                .join(".data")
+                .join(Uuid::new_v4().to_string());
             if !data_folder.exists() {
                 println!("Using test path");
                 let _ = std::fs::create_dir_all(&data_folder);
