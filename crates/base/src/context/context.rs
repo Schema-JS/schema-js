@@ -48,6 +48,17 @@ impl SjsContext {
             config.process.max_file_descriptors_in_cache,
         ));
 
+        let data_path = if cfg!(test) {
+            let data_folder = folder_path.clone().join(".data");
+            if !data_folder.exists() {
+                println!("Using test path");
+                let _ = std::fs::create_dir_all(&data_folder);
+            }
+            Some(data_path.unwrap_or(data_folder))
+        } else {
+            data_path
+        };
+
         let mut engine = Arc::new(RwLock::new(SchemeJsEngine::new(
             data_path.clone(),
             config.clone(),

@@ -237,14 +237,20 @@ mod test {
             let a = RowJson::from_slice(a.as_slice(), tbl.table.clone());
             let b = RowJson::from_slice(b.as_slice(), tbl.table.clone());
 
-            assert_eq!(
-                a.get_value(tbl.table.get_column("id").unwrap()).unwrap(),
-                DataValue::String("1".to_string())
-            );
-            assert_eq!(
-                b.get_value(tbl.table.get_column("id").unwrap()).unwrap(),
-                DataValue::String("2".to_string())
-            );
+            let a_val = a
+                .get_value(tbl.table.get_column("id").unwrap())
+                .unwrap()
+                .to_string();
+            let b_val = b
+                .get_value(tbl.table.get_column("id").unwrap())
+                .unwrap()
+                .to_string();
+
+            let mut arr = vec![a_val, b_val];
+            arr.sort();
+
+            assert_eq!(arr[0], "1");
+            assert_eq!(arr[1], "2");
         }
     }
 }

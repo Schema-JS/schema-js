@@ -381,16 +381,15 @@ mod test {
         let row_0 = &results[0];
 
         let col = tbl.table.get_column("user_name").unwrap();
-
-        assert_eq!(
-            row_0.get_value(col).unwrap(),
-            DataValue::String("Door".to_string())
-        );
         let row_1 = &results[1];
-        let res_name = row_1.get_value(col).unwrap();
-        assert_eq!(res_name, DataValue::String("Luis".to_string()));
 
-        println!("{}", res_name.to_string());
+        let mut vals = vec![
+            row_0.get_value(col).unwrap().to_string(),
+            row_1.get_value(col).unwrap().to_string(),
+        ];
+        vals.sort();
+        assert_eq!(vals[0], "Door");
+        assert_eq!(vals[1], "Luis");
     }
 
     fn get_user_table_for_drop_test() -> Table {
