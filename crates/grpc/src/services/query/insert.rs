@@ -25,9 +25,7 @@ define_sjs_grpc_service!(InsertService, {
         rows: Vec<RowInsert>,
     ) -> Result<bool, Status> {
         let engine = self.db_manager.engine();
-        let db_manager = engine
-            .read()
-            .map_err(|e| Status::internal(format!("Failed to read engine: {:?}", e)))?;
+        let db_manager = engine.read();
         let user = user_context.get_user();
         let db = match db_manager.find_by_name_ref(&user.scheme) {
             Some(db) => db,

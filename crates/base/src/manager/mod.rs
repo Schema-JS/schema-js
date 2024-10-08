@@ -4,9 +4,10 @@ pub mod tasks;
 
 use crate::manager::task::Task;
 use crate::manager::task_duration::TaskDuration;
+use parking_lot::RwLock;
 use schemajs_engine::engine::SchemeJsEngine;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 

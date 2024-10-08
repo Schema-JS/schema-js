@@ -3,31 +3,22 @@ mod file_descriptor;
 use crate::fdm::file_descriptor::FileDescriptor;
 use lru::LruCache;
 use parking_lot::RwLock;
-use std::cell::OnceCell;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct FileDescriptorManager {
-    cache: RwLock<LruCache<PathBuf, Arc<FileDescriptor>>>,
+    cache: Arc<RwLock<LruCache<PathBuf, Arc<FileDescriptor>>>>,
     max_size: usize,
 }
 
-static FDM: OnceLock<Arc<FileDescriptorManager>> = OnceLock::new();
-
-pub fn get_fdm() -> Arc<FileDescriptorManager> {
-    FDM.get().unwrap().clone()
-}
-
 impl FileDescriptorManager {
-    pub fn init(max_size: usize) {
-        FDM.get_or_init(|| Arc::new(FileDescriptorManager::new(max_size)));
-    }
-
-    fn new(max_size: usize) -> Self {
+    pub fn new(max_size: usize) -> Self {
         Self {
-            cache: RwLock::new(LruCache::new(NonZeroUsize::new(max_size).unwrap())),
+            cache: Arc::new(RwLock::new(LruCache::new(
+                NonZeroUsize::new(max_size).unwrap(),
+            ))),
             max_size,
         }
     }
@@ -88,26 +79,40 @@ impl FileDescriptorManager {
             }
         }
     }
+
+    pub fn remove_paths(&self, paths: Vec<PathBuf>) {
+        let fdm = self.cache.clone();
+        if !paths.is_empty() {
+            if self.max_size >= { fdm.read().len() } {
+                tokio::spawn(async move {
+                    let mut writer = fdm.write();
+                    for path in paths.iter() {
+                        writer.pop(path);
+                    }
+                });
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod fdm_tests {
-    use crate::fdm::{get_fdm, FileDescriptorManager};
+    use crate::fdm::FileDescriptorManager;
+    use std::sync::Arc;
     use std::time::Duration;
     use tempfile::tempdir;
 
     #[tokio::test]
     async fn test_fdm() {
+        let fdm = Arc::new(FileDescriptorManager::new(3));
         let temp_dir = tempdir().unwrap();
         let temp_dir_path = temp_dir.into_path();
-        FileDescriptorManager::init(3);
 
         let fs_1 = temp_dir_path.join("1.data");
         let fs_2 = temp_dir_path.join("2.data");
         let fs_3 = temp_dir_path.join("3.data");
         let fs_4 = temp_dir_path.join("4.data");
 
-        let fdm = get_fdm();
         assert!(fdm.pop_insert(&fs_1).is_some());
         assert!(fdm.pop_insert(&fs_2).is_some());
         assert!(fdm.pop_insert(&fs_3).is_some());

@@ -1,4 +1,5 @@
 use schemajs_config::DatabaseConfig;
+use schemajs_data::fdm::FileDescriptorManager;
 use schemajs_dirs::create_scheme_js_db;
 use schemajs_helpers::helper::HelperCall;
 use schemajs_primitives::table::Table;
@@ -24,12 +25,17 @@ impl EngineDb {
         name: &str,
         helper_tx: Sender<HelperCall>,
         db_config: DatabaseConfig,
+        file_descriptor_manager: Arc<FileDescriptorManager>,
     ) -> Self {
         let db_folder = create_scheme_js_db(base_path.clone(), name);
         let db_config = Arc::new(db_config);
 
-        let mut query_manager =
-            SingleQueryManager::new(name.to_string(), helper_tx.clone(), db_config.clone());
+        let mut query_manager = SingleQueryManager::new(
+            name.to_string(),
+            helper_tx.clone(),
+            db_config.clone(),
+            file_descriptor_manager.clone(),
+        );
         query_manager.data_path = base_path.clone();
 
         EngineDb {

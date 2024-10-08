@@ -1,8 +1,10 @@
 use crate::errors::ShardErrors;
+use crate::fdm::FileDescriptorManager;
 use std::path::PathBuf;
+use std::sync::Arc;
 use uuid::Uuid;
+
 pub mod map_shard;
-pub mod shard_collection;
 pub mod shards;
 pub mod temp_collection;
 pub mod temp_map_shard;
@@ -15,7 +17,7 @@ pub enum AvailableSpace {
 }
 
 pub trait Shard<Opts: ShardConfig> {
-    fn new(path: PathBuf, opts: Opts, uuid: Option<Uuid>) -> Self;
+    fn new(path: PathBuf, opts: Opts, uuid: Option<Uuid>, fdm: Arc<FileDescriptorManager>) -> Self;
 
     fn has_space(&self) -> bool;
 

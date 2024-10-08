@@ -1,5 +1,6 @@
 use crate::data_handler::DataHandler;
 use crate::errors::ShardErrors;
+use crate::fdm::FileDescriptorManager;
 use crate::shard::shards::kv::config::KvShardConfig;
 use crate::shard::shards::kv::shard_header::KvShardHeader;
 use crate::shard::shards::kv::util::get_element_offset;
@@ -54,8 +55,13 @@ impl KvShard {
 }
 
 impl Shard<KvShardConfig> for KvShard {
-    fn new(path: PathBuf, opts: KvShardConfig, uuid: Option<Uuid>) -> Self {
-        let data = unsafe { DataHandler::new(path.clone()).unwrap() };
+    fn new(
+        path: PathBuf,
+        opts: KvShardConfig,
+        uuid: Option<Uuid>,
+        fdm: Arc<FileDescriptorManager>,
+    ) -> Self {
+        let data = unsafe { DataHandler::new(path.clone(), fdm).unwrap() };
         let data = Arc::new(data);
 
         let header = KvShardHeader::new_from_file(
@@ -158,12 +164,12 @@ mod test {
     use crate::shard::shards::kv::config::KvShardConfig;
     use crate::shard::shards::kv::shard::KvShard;
     use crate::shard::Shard;
+    use std::sync::Arc;
     use tempfile::tempdir;
     use uuid::Uuid;
 
     #[tokio::test]
     pub async fn test_kv_shard() {
-        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir
             .path()
@@ -176,6 +182,7 @@ mod test {
                 max_capacity: None,
             },
             None,
+            Arc::new(FileDescriptorManager::new(2500)),
         );
 
         kv_shard

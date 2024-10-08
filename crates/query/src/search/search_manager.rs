@@ -216,7 +216,6 @@ mod test {
 
     #[flaky_test::flaky_test(tokio)]
     pub async fn test_search_manager() {
-        FileDescriptorManager::init(2500);
         let test_db = Uuid::new_v4().to_string();
         let db_folder = create_scheme_js_db(None, test_db.as_str());
         let channel = create_helper_channel(1);
@@ -224,6 +223,7 @@ mod test {
             test_db.clone(),
             channel.0,
             Arc::new(DatabaseConfig::default()),
+            Arc::new(FileDescriptorManager::new(2500)),
         );
 
         let tbl = Table::new("users")
@@ -405,14 +405,17 @@ mod test {
 
     #[tokio::test]
     pub async fn test_search_manager_with_drop() {
-        FileDescriptorManager::init(2500);
         let channel = create_helper_channel(1);
         let db_config: Arc<DatabaseConfig> = Arc::new(Default::default());
         let test_db = Uuid::new_v4().to_string();
         let db_folder = create_scheme_js_db(None, test_db.as_str());
         {
-            let query_manager =
-                SingleQueryManager::new(test_db.clone(), channel.0.clone(), db_config.clone());
+            let query_manager = SingleQueryManager::new(
+                test_db.clone(),
+                channel.0.clone(),
+                db_config.clone(),
+                Arc::new(FileDescriptorManager::new(2500)),
+            );
 
             let tbl = get_user_table_for_drop_test();
 
@@ -455,8 +458,12 @@ mod test {
         println!("-------------");
 
         {
-            let query_manager =
-                SingleQueryManager::<RowJson>::new(test_db.clone(), channel.0, db_config);
+            let query_manager = SingleQueryManager::<RowJson>::new(
+                test_db.clone(),
+                channel.0,
+                db_config,
+                Arc::new(FileDescriptorManager::new(2500)),
+            );
             let tbl = get_user_table_for_drop_test();
             query_manager.register_table(tbl);
             let tables = query_manager.tables.clone();

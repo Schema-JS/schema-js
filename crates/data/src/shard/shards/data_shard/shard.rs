@@ -1,5 +1,6 @@
 use crate::data_handler::DataHandler;
 use crate::errors::ShardErrors;
+use crate::fdm::FileDescriptorManager;
 use crate::shard::shards::data_shard::config::DataShardConfig;
 use crate::shard::shards::data_shard::shard_header::DataShardHeader;
 use crate::shard::{AvailableSpace, Shard};
@@ -76,8 +77,13 @@ impl DataShard {
 }
 
 impl Shard<DataShardConfig> for DataShard {
-    fn new(path: PathBuf, opts: DataShardConfig, uuid: Option<Uuid>) -> Self {
-        let data_handler = unsafe { DataHandler::new(path.clone()) }.unwrap();
+    fn new(
+        path: PathBuf,
+        opts: DataShardConfig,
+        uuid: Option<Uuid>,
+        fdm: Arc<FileDescriptorManager>,
+    ) -> Self {
+        let data_handler = unsafe { DataHandler::new(path.clone(), fdm) }.unwrap();
         let arc_dh = Arc::new(data_handler);
         let header = DataShardHeader::new_from_file(arc_dh.clone(), opts.max_offsets, uuid);
 
@@ -182,7 +188,6 @@ mod test {
 
     #[tokio::test]
     pub async fn test_data_shard() {
-        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir
             .path()
@@ -192,7 +197,12 @@ mod test {
             max_offsets: Some(10),
         };
 
-        let data_shard = DataShard::new(file_path.clone(), config, None);
+        let data_shard = DataShard::new(
+            file_path.clone(),
+            config,
+            None,
+            Arc::new(FileDescriptorManager::new(2500)),
+        );
 
         let strs = [
             "Hello World",
@@ -237,7 +247,6 @@ mod test {
 
     #[tokio::test]
     pub async fn test_data_shard_from_file() {
-        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir
             .path()
@@ -247,7 +256,12 @@ mod test {
             max_offsets: Some(10),
         };
 
-        let data_shard = DataShard::new(file_path.clone(), config, None);
+        let data_shard = DataShard::new(
+            file_path.clone(),
+            config,
+            None,
+            Arc::new(FileDescriptorManager::new(2500)),
+        );
 
         let strs = [
             "Hello World",
@@ -274,6 +288,7 @@ mod test {
                 max_offsets: Some(10),
             },
             None,
+            Arc::new(FileDescriptorManager::new(2500)),
         );
         /*let res: Vec<u64> = vec![104, 115, 128, 137, 142, 146, 147, 151, 156, 174];
         assert_eq!(res, new_data_shard.header.read().unwrap().offsets);*/
@@ -281,7 +296,6 @@ mod test {
 
     #[tokio::test]
     pub async fn test_data_shard_threads() {
-        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
         let file_path = temp_dir
             .path()
@@ -293,6 +307,7 @@ mod test {
                 max_offsets: Some(2),
             },
             None,
+            Arc::new(FileDescriptorManager::new(2500)),
         );
         let shard = Arc::new(RwLock::new(data_shard));
 

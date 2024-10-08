@@ -2,12 +2,13 @@ use crate::row::Row;
 use chashmap::CHashMap;
 use parking_lot::RwLock;
 use schemajs_config::DatabaseConfig;
+use schemajs_data::fdm::FileDescriptorManager;
 use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
 use schemajs_data::shard::shards::data_shard::shard::DataShard;
 use schemajs_data::shard::temp_collection::TempCollection;
 use schemajs_dirs::create_schema_js_table;
-use schemajs_helpers::helper::HelperCall;
+use schemajs_helpers::helper::{HelperCall, HelperDbContext};
 use schemajs_index::composite_key::CompositeKey;
 use schemajs_index::implementations::hash::hash_index::HashIndex;
 use schemajs_index::index_keys::IndexKeyType;
@@ -43,6 +44,7 @@ use tokio::sync::mpsc::Sender;
 #[derive(Debug)]
 pub struct TableShard<T: Row> {
     pub table: Arc<Table>,
+    pub scheme: String,
     pub data: Arc<RwLock<MapShard<DataShard, DataShardConfig>>>,
     pub temps: TempCollection<DataShard, DataShardConfig, TempDataShardConfig>,
     pub indexes: Arc<CHashMap<String, IndexTypeValue>>,
@@ -69,9 +71,9 @@ impl<T: Row> TableShard<T> {
         temp_config: TempDataShardConfig,
         helper_tx: Sender<HelperCall>,
         db_config: &Arc<DatabaseConfig>,
+        fdm: Arc<FileDescriptorManager>,
     ) -> Self {
         let table_path = create_schema_js_table(base_path, scheme, table.name.as_str());
-        println!("{:?}", table_path);
 
         let map_shard = MapShard::new(
             table_path.clone(),
@@ -79,6 +81,7 @@ impl<T: Row> TableShard<T> {
             DataShardConfig {
                 max_offsets: Some(db_config.max_rows_per_shard),
             },
+            fdm.clone(),
         );
 
         let refs = Arc::new(RwLock::new(map_shard));
@@ -95,6 +98,7 @@ impl<T: Row> TableShard<T> {
             temps_folder,
             "temp_",
             temp_config,
+            fdm.clone(),
         );
 
         let mut indexes = CHashMap::new();
@@ -111,6 +115,7 @@ impl<T: Row> TableShard<T> {
                     path,
                     Some(format!("{}", index.name)),
                     Some(db_config.max_records_per_hash_index_shard),
+                    fdm.clone(),
                 )),
             };
 
@@ -124,6 +129,7 @@ impl<T: Row> TableShard<T> {
             temps: temp_collection,
             _marker: PhantomData,
             helper_tx,
+            scheme: scheme.to_string(),
         };
 
         tbl_shard.init();
@@ -141,6 +147,7 @@ impl<T: Row> TableShard<T> {
         for temp_shard in self.temps.temps.iter() {
             let indexes = indexes.clone();
             let table = self.table.clone();
+            let scheme_name = self.scheme.clone();
             let helper_tx = self.helper_tx.clone();
 
             temp_shard.write().set_on_reconcile(Box::new(move |rows| {
@@ -157,11 +164,15 @@ impl<T: Row> TableShard<T> {
                         .collect();
                     let helper_tx = helper_tx.clone();
                     let tbl_name = table.name.clone();
+                    let scheme = scheme_name.clone();
                     tokio::spawn(async move {
                         let _ = helper_tx
                             .send(HelperCall::InsertHook {
                                 rows: vals,
-                                table: tbl_name,
+                                db_ctx: HelperDbContext {
+                                    db: Some(scheme),
+                                    table: Some(tbl_name),
+                                },
                             })
                             .await;
                     });

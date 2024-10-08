@@ -15,10 +15,11 @@ use deno_core::{
     located_script_name, serde_v8, v8, Extension, JsRuntime, ModuleCodeString, ModuleId,
     ModuleSpecifier, PollEventLoopOptions, RuntimeOptions,
 };
+use parking_lot::RwLock;
 use schemajs_config::SchemeJsConfig;
 use schemajs_engine::engine::SchemeJsEngine;
 use schemajs_helpers::helper::{
-    Helper, HelperCall, HelperType, SjsHelpersContainer, SjsTableHelpers,
+    Helper, HelperCall, HelperDbContext, HelperType, SjsHelpersContainer, SjsTableHelpers,
 };
 use schemajs_internal::get_internal_tables;
 use schemajs_internal::manager::InternalManager;
@@ -27,12 +28,13 @@ use schemajs_primitives::database::Database;
 use schemajs_primitives::table::Table;
 use schemajs_workers::context::{MainWorkerRuntimeOpts, WorkerRuntimeOpts};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::cell::{RefCell, RefMut};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -77,7 +79,10 @@ impl SchemeJsRuntime {
 
         // Bootstrapping Stage
         {
-            let script = format!("globalThis.bootstrap()");
+            let init_params = json!({
+                "repl": context.is_repl()
+            });
+            let script = format!("globalThis.bootstrap({})", init_params);
             js_runtime
                 .execute_script(located_script_name!(), ModuleCodeString::from(script))
                 .expect("Failed to execute bootstrap script");
@@ -109,7 +114,7 @@ impl SchemeJsRuntime {
 
             if !context.is_loaded() {
                 let tasks = get_all_internal_tasks();
-                let mut task_manager = context.task_manager.write().unwrap();
+                let mut task_manager = context.task_manager.write();
 
                 for task in tasks {
                     task_manager.add_task(task);
@@ -135,7 +140,7 @@ impl SchemeJsRuntime {
         js_runtime: &mut JsRuntime,
     ) -> Result<()> {
         let engine_arc = ctx.engine.clone();
-        let mut engine = engine_arc.write().unwrap();
+        let mut engine = engine_arc.write();
 
         let conf = ctx.config.clone();
         let current_folder = ctx.current_folder.clone();
@@ -155,15 +160,17 @@ impl SchemeJsRuntime {
             }
 
             let (scheme_name, table_specifiers) = engine.load_database_schema(&path)?;
+            let db_helpers = helpers
+                .0
+                .entry(scheme_name.clone())
+                .or_insert_with(|| DashMap::default());
+
             let mut tables = vec![];
             for table_specifier in table_specifiers {
                 let (_, _, tbl, tbl_helpers) =
                     Self::load_table(js_runtime, table_specifier).await.unwrap();
-                let mut rt_helpers = helpers
-                    .0
-                    .entry(tbl.name.clone())
-                    .or_insert(SjsHelpersContainer::default());
-                rt_helpers.0.extend(tbl_helpers);
+
+                db_helpers.insert(tbl.name.clone(), SjsHelpersContainer::new(tbl_helpers));
                 tables.push(tbl);
             }
 
@@ -298,30 +305,72 @@ impl SchemeJsRuntime {
             HelperCall::CustomQuery {
                 identifier,
                 req,
-                table,
                 response,
+                db_ctx,
             } => {
-                let helper = self
-                    .table_helpers
-                    .find_custom_query_helper(&table, &identifier);
+                self.set_db_context(&db_ctx);
 
-                self.execute_helper(req, Some(response), helper).await;
+                let helper = self.table_helpers.find_custom_query_helper(
+                    &db_ctx.db.unwrap(),
+                    &db_ctx.table.unwrap(),
+                    &identifier,
+                );
+
+                self.execute_helper(&req, Some(response), helper).await;
             }
-            HelperCall::InsertHook { table, rows } => {
-                let helper = self
-                    .table_helpers
-                    .find_hook_helper(&table, HelperType::InsertHook);
+            HelperCall::InsertHook { rows, db_ctx } => {
+                self.set_db_context(&db_ctx);
+
+                let helper = self.table_helpers.find_hook_helper(
+                    &db_ctx.db.unwrap(),
+                    &db_ctx.table.unwrap(),
+                    HelperType::InsertHook,
+                );
                 let arr_to_val = serde_json::to_value(rows);
                 if let Ok(val) = arr_to_val {
-                    self.execute_helper(val, None, helper).await
+                    if let Some(helpers) = helper {
+                        for single_helper in helpers {
+                            self.execute_helper(&val, None, Some(single_helper)).await
+                        }
+                    }
                 }
             }
         }
     }
 
+    pub fn run_repl_script(&mut self, script: String) -> Result<Option<serde_json::Value>> {
+        let res = self
+            .js_runtime
+            .execute_script(located_script_name!(), ModuleCodeString::from(script));
+        match res {
+            Ok(res) => {
+                let scope = &mut self.js_runtime.handle_scope();
+                let local = v8::Local::new(scope, res);
+                let to_json = serde_v8::from_v8::<serde_json::Value>(scope, local).ok();
+                Ok(to_json)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn raw_set_db_context(&mut self, db_name: &Option<String>, tbl_name: &Option<String>) {
+        let params = json!({
+            "dbName": db_name,
+            "tblName": tbl_name
+        });
+        let script = format!("globalThis.initializeDbContext({})", params);
+        let _ = self
+            .js_runtime
+            .execute_script(located_script_name!(), ModuleCodeString::from(script));
+    }
+
+    pub fn set_db_context(&mut self, helper_db_context: &HelperDbContext) {
+        self.raw_set_db_context(&helper_db_context.db, &helper_db_context.table);
+    }
+
     async fn execute_helper(
         &mut self,
-        req: serde_json::Value,
+        req: &serde_json::Value,
         response: Option<UnboundedSender<serde_json::Value>>,
         helper: Option<Arc<Helper>>,
     ) {
@@ -347,7 +396,12 @@ impl SchemeJsRuntime {
                                 let _ = response.send(to_val);
                             }
                         }
-                        Err(_) => {}
+                        Err(e) => {
+                            println!("{:?}", e);
+                            if let Some(response) = response {
+                                let _ = response.send(serde_json::Value::Null);
+                            }
+                        }
                     }
                 }
                 Err(_) => {}
@@ -388,9 +442,14 @@ mod test {
     use crate::runtime::SchemeJsRuntime;
     use deno_core::{located_script_name, serde_json, v8};
     use schemajs_helpers::create_helper_channel;
+    use schemajs_helpers::helper::{Helper, HelperCall, HelperDbContext, HelperType};
+    use schemajs_query::row::Row;
+    use schemajs_query::row_json::RowJson;
+    use serde_json::json;
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::time::Duration;
+    use tokio::sync::mpsc::unbounded_channel;
     use uuid::Uuid;
 
     #[tokio::test]
@@ -443,7 +502,7 @@ mod test {
 
             for i in 0..num_inserts {
                 script.push_str(&format!(
-                    r#"globalThis.SchemeJS.insert("{}", "{}", {});"#,
+                    r#"globalThis.SchemeJS.rawInsert("{}", "{}", {});"#,
                     "public",
                     "users",
                     serde_json::json!({
@@ -489,7 +548,7 @@ mod test {
 
                 for i in 0..num_inserts {
                     script.push_str(&format!(
-                        r#"globalThis.SchemeJS.insert("{}", "{}", {});"#,
+                        r#"globalThis.SchemeJS.rawInsert("{}", "{}", {});"#,
                         "public",
                         "users",
                         serde_json::json!({
@@ -516,7 +575,7 @@ mod test {
 
         let val = {
             let engine = last_rt.ctx.engine.clone();
-            let reader = engine.read().unwrap();
+            let reader = engine.read();
             let db = reader.find_by_name_ref("public").unwrap();
             let table = db.query_manager.tables.get("users").unwrap();
             let table_read = table.data.read();
@@ -538,6 +597,123 @@ mod test {
         assert!(val.2);
 
         Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn test_runtime_insert_with_context() -> anyhow::Result<()> {
+        let (tx, rx) = create_helper_channel(1);
+        let data_path = format!("./test_cases/data/{}", Uuid::new_v4().to_string());
+        let data_path = std::env::current_dir()
+            .unwrap()
+            .join(PathBuf::from(data_path.as_str()));
+
+        std::fs::create_dir_all(data_path.clone()).unwrap();
+
+        let now = std::time::Instant::now();
+        {
+            let mut create_rt = SchemeJsRuntime::new(Arc::new(SjsContext::new(
+                PathBuf::from("./test_cases/default-db"),
+                Some(data_path.clone()),
+                tx,
+            )?))
+            .await?;
+
+            let mut script = String::new();
+
+            script.push_str(&format!(
+                r#"globalThis.SchemeJS.insert({});"#,
+                serde_json::json!({
+                    "id": "ABCD"
+                })
+            ));
+
+            let execute = create_rt
+                .js_runtime
+                .execute_script(located_script_name!(), script);
+            // Should err because the context has not been set yet
+            assert!(execute.is_err());
+
+            let _ = create_rt.set_db_context(&HelperDbContext {
+                db: Some("public".to_string()),
+                table: Some("users".to_string()),
+            });
+
+            let mut script = String::new();
+            script.push_str(&format!(
+                r#"globalThis.SchemeJS.insert({});"#,
+                serde_json::json!({
+                    "id": "ABCD"
+                })
+            ));
+
+            let execute = create_rt
+                .js_runtime
+                .execute_script(located_script_name!(), script);
+            // Should err because the context has not been set yet
+            assert!(execute.is_ok());
+        }
+        let elapsed = now.elapsed();
+        println!("Elapsed: {:.5?}", elapsed);
+
+        std::fs::remove_dir_all(data_path).unwrap();
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    pub async fn test_query_ops() {
+        let (tx, rx) = create_helper_channel(1);
+        let data_path = format!("./test_cases/data/{}", Uuid::new_v4().to_string());
+        let data_path = std::env::current_dir()
+            .unwrap()
+            .join(PathBuf::from(data_path.as_str()));
+
+        {
+            let context = Arc::new(
+                SjsContext::new(
+                    PathBuf::from("./test_cases/default-db"),
+                    Some(data_path.clone()),
+                    tx,
+                )
+                .unwrap(),
+            );
+            let mut rt = SchemeJsRuntime::new(context.clone()).await.unwrap();
+
+            let engine = context.engine.read();
+            let db = engine.find_by_name_ref("public").unwrap();
+            let mut row = RowJson::from_json(
+                serde_json::json!({
+                    "id": "999",
+                    "username": "Luis",
+                    "password": "abcd",
+                    "enabled": true
+                }),
+                db.query_manager.get_table("users").unwrap(),
+            )
+            .unwrap();
+
+            let raw_insert = db
+                .query_manager
+                .raw_insert(&mut [row], true)
+                .unwrap()
+                .unwrap();
+            let mut unbounded = unbounded_channel();
+            let helper_call = HelperCall::CustomQuery {
+                identifier: "searchRowLuis".to_string(),
+                req: Default::default(),
+                db_ctx: HelperDbContext {
+                    db: Some("public".to_string()),
+                    table: Some("users".to_string()),
+                },
+                response: unbounded.0.clone(),
+            };
+            println!("Calling helper");
+            let call = rt.call_helper(helper_call).await;
+            let a = unbounded.1.recv().await.unwrap();
+            let vals = a.as_array().unwrap();
+            assert_eq!(vals[0].get("username").unwrap().as_str().unwrap(), "Luis");
+        }
+        std::fs::remove_dir_all(data_path).unwrap();
     }
 
     #[tokio::test]
@@ -563,7 +739,7 @@ mod test {
 
             for i in 0..num_inserts {
                 script.push_str(&format!(
-                    r#"globalThis.SchemeJS.insert("{}", "{}", {});"#,
+                    r#"globalThis.SchemeJS.rawInsert("{}", "{}", {});"#,
                     "public",
                     "users",
                     serde_json::json!({

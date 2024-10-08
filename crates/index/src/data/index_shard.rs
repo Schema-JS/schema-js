@@ -3,6 +3,7 @@ use crate::types::{IndexKey, IndexValue};
 use crate::utils::get_entry_size;
 use parking_lot::RwLock;
 use schemajs_data::errors::ShardErrors;
+use schemajs_data::fdm::FileDescriptorManager;
 use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::kv::config::KvShardConfig;
 use schemajs_data::shard::shards::kv::shard::KvShard;
@@ -13,6 +14,7 @@ use std::io::{Seek, Write};
 use std::marker::PhantomData;
 use std::os::unix::fs::FileExt;
 use std::path::Path;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct IndexShard<K: IndexKey, V: IndexValue> {
@@ -36,6 +38,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         value_size: usize,
         max_capacity: Option<u64>,
         binary_order: Option<bool>,
+        fdm: Arc<FileDescriptorManager>,
     ) -> Self {
         let shard_collection = MapShard::new(
             shard_folder.as_ref().to_path_buf(),
@@ -44,6 +47,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
                 value_size: get_entry_size(key_size, value_size),
                 max_capacity: max_capacity.clone(),
             },
+            fdm,
         );
 
         Self {
@@ -245,6 +249,8 @@ mod test {
     use crate::keys::string_index::StringIndexKey;
     use crate::utils::get_entry_size;
     use crate::vals::raw_value::RawIndexValue;
+    use schemajs_data::fdm::FileDescriptorManager;
+    use std::sync::Arc;
     use tempfile::tempdir;
     use uuid::Uuid;
 
@@ -268,6 +274,7 @@ mod test {
             1024,
             None,
             Some(true),
+            Arc::new(FileDescriptorManager::new(2500)),
         );
 
         let key_size = 32;
@@ -319,6 +326,7 @@ mod test {
             1024,
             None,
             Some(true),
+            Arc::new(FileDescriptorManager::new(2500)),
         );
 
         let key_size = 32;
@@ -360,6 +368,7 @@ mod test {
             1024,
             None,
             Some(true),
+            Arc::new(FileDescriptorManager::new(2500)),
         );
 
         let pad_key = |s: &str| -> String {

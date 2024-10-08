@@ -40,9 +40,7 @@ pub fn find_database(
     user_context: Arc<UserContext>,
 ) -> Result<Arc<EngineDb>, Status> {
     let engine = internal_manager.clone().engine();
-    let db_manager = engine
-        .read()
-        .map_err(|e| Status::internal(format!("Failed to read engine: {:?}", e)))?;
+    let db_manager = engine.read();
     let user = user_context.get_user();
     match db_manager.find_by_name_ref(&user.scheme) {
         Some(db) => Ok(db.clone()),

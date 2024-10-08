@@ -78,8 +78,6 @@ impl ModuleLoader for TypescriptModuleLoader {
                 _ => bail!("Unknown extension {:?}", path.extension()),
             };
 
-            println!("{}", &path.to_str().unwrap());
-
             let code = std::fs::read_to_string(&path)?;
             let code = if should_transpile {
                 let parsed = deno_ast::parse_module(ParseParams {

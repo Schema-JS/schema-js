@@ -1,4 +1,5 @@
 use crate::errors::ShardErrors;
+use crate::fdm::FileDescriptorManager;
 use crate::shard::map_shard::MapShard;
 use crate::shard::temp_map_shard::TempMapShard;
 use crate::shard::{Shard, ShardConfig, TempShardConfig};
@@ -23,6 +24,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         folder: PathBuf,
         prefix: &str,
         temp_config: TempOpts,
+        fdm: Arc<FileDescriptorManager>,
     ) -> Self {
         let mut temps = vec![];
 
@@ -32,6 +34,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
                 prefix,
                 target_shard.clone(),
                 temp_config.clone(),
+                fdm.clone(),
             )));
         }
 

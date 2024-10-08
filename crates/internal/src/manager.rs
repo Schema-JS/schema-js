@@ -1,8 +1,9 @@
 use crate::auth::auth_manager::AuthManager;
 use crate::get_internal_tables;
+use parking_lot::RwLock;
 use schemajs_config::SchemeJsConfig;
 use schemajs_engine::engine::SchemeJsEngine;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 pub struct InternalManager {
     _engine: Arc<RwLock<SchemeJsEngine>>,
@@ -18,12 +19,12 @@ impl InternalManager {
     }
 
     pub fn get_config(&self) -> Arc<SchemeJsConfig> {
-        self._engine.read().unwrap().config.clone()
+        self._engine.read().config.clone()
     }
 
     pub fn init(&self) {
         {
-            let mut writer = self._engine.write().unwrap();
+            let mut writer = self._engine.write();
             let default_scheme_name = writer.config.global.default_scheme.clone();
             {
                 if !writer.contains_db(&default_scheme_name) {
@@ -34,7 +35,7 @@ impl InternalManager {
 
         // Load Internal tables
         let dbs = {
-            let read_engine = self._engine.read().unwrap();
+            let read_engine = self._engine.read();
 
             let db_names: Vec<String> = read_engine
                 .databases

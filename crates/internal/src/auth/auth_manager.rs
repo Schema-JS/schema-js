@@ -1,13 +1,14 @@
 use crate::auth::types::{UserContext, VerifyUserArgs};
 use crate::users::user::{create_user, User, INTERNAL_USER_TABLE, INTERNAL_USER_TABLE_NAME};
 use dashmap::DashMap;
+use parking_lot::RwLock;
 use schemajs_engine::engine::SchemeJsEngine;
 use schemajs_engine::engine_db::EngineDb;
 use schemajs_primitives::column::types::DataValue;
 use schemajs_query::ops::query_ops::{QueryOps, QueryVal};
 use schemajs_query::row::Row;
 use schemajs_query::row_json::{RowData, RowJson};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct AuthManager {
@@ -47,7 +48,7 @@ impl AuthManager {
     }
 
     pub fn verify_user(&self, args: VerifyUserArgs) -> Option<User> {
-        let engine = self.engine.read().unwrap();
+        let engine = self.engine.read();
         let table = &*INTERNAL_USER_TABLE;
         if let Some(db) = engine.find_by_name_ref(&args.scheme_name) {
             let u = Self::search_user(db, &args.identifier);
@@ -101,7 +102,7 @@ impl AuthManager {
     }
 
     pub fn init_default_user(&self, db_name: &str) {
-        let mut engine = self.engine.write().unwrap();
+        let mut engine = self.engine.write();
         let db = engine.find_by_name_ref(&db_name).unwrap();
         let auth = &db.db_config;
 

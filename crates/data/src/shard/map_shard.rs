@@ -1,9 +1,11 @@
 use crate::errors::ShardErrors;
+use crate::fdm::FileDescriptorManager;
 use crate::shard::{AvailableSpace, Shard, ShardConfig};
 use crate::utils::fs::list_files_with_prefix;
 use indexmap::IndexMap;
 use parking_lot::RwLock;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -13,10 +15,16 @@ pub struct MapShard<S: Shard<Opts>, Opts: ShardConfig> {
     pub shard_prefix: String,
     pub shards_folder: PathBuf,
     config: Opts,
+    fdm: Arc<FileDescriptorManager>,
 }
 
 impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
-    pub fn new<P: AsRef<Path> + Clone>(shards_folder: P, shard_prefix: &str, config: Opts) -> Self {
+    pub fn new<P: AsRef<Path> + Clone>(
+        shards_folder: P,
+        shard_prefix: &str,
+        config: Opts,
+        fdm: Arc<FileDescriptorManager>,
+    ) -> Self {
         let shards_folder = shards_folder.as_ref().to_path_buf();
         let shard_files = list_files_with_prefix(&shards_folder, shard_prefix).unwrap();
         let mut sorted_files: Vec<(usize, String, PathBuf)> = Vec::new();
@@ -52,6 +60,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
                         path.clone(),
                         config.clone(),
                         Some(Uuid::parse_str(uuid).unwrap()),
+                        fdm.clone(),
                     ),
                 );
             }
@@ -62,11 +71,13 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
                 current_master_shard,
                 config.clone(),
                 Some(maybe_new_shard_id),
+                fdm.clone(),
             ),
             past_master_shards: RwLock::new(past_master_shards),
             shard_prefix: shard_prefix.to_string(),
             shards_folder,
             config,
+            fdm,
         }
     }
 
@@ -115,7 +126,12 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
                     shard_id.clone(),
                     new_shard_number,
                 ));
-                let new_shard = S::new(shard_path, self.config.clone(), Some(shard_id));
+                let new_shard = S::new(
+                    shard_path,
+                    self.config.clone(),
+                    Some(shard_id),
+                    self.fdm.clone(),
+                );
                 new_shard
             };
 
@@ -229,7 +245,6 @@ mod test {
 
     #[tokio::test]
     pub async fn test_context_creation_empty_table() {
-        FileDescriptorManager::init(2500);
         let fake_empty_table_path = std::env::current_dir()
             .unwrap()
             .join("./test_cases/fake-db-folder/fake-empty-table");
@@ -238,6 +253,7 @@ mod test {
             fake_empty_table_path,
             "data_",
             DataShardConfig { max_offsets: None },
+            Arc::new(FileDescriptorManager::new(2500)),
         );
 
         assert!(context.past_master_shards.read().is_empty());
@@ -255,7 +271,6 @@ mod test {
 
     #[tokio::test]
     pub async fn test_context_creation_partial_table() {
-        FileDescriptorManager::init(2500);
         let fake_partial_folder_path = std::env::current_dir()
             .unwrap()
             .join("./test_cases/fake-db-folder/fake-partial-folder");
@@ -263,6 +278,7 @@ mod test {
             fake_partial_folder_path,
             "data_",
             DataShardConfig { max_offsets: None },
+            Arc::new(FileDescriptorManager::new(2500)),
         );
         assert!(!context.past_master_shards.read().is_empty());
         assert_eq!(
@@ -280,7 +296,6 @@ mod test {
 
     #[tokio::test]
     pub async fn test_shard_automatic_creation() {
-        FileDescriptorManager::init(2500);
         let fake_partial_folder_path = std::env::current_dir().unwrap().join(format!(
             "./test_cases/fake-db-folder/{}",
             Uuid::new_v4().to_string()
@@ -293,6 +308,7 @@ mod test {
             DataShardConfig {
                 max_offsets: Some(1),
             },
+            Arc::new(FileDescriptorManager::new(2500)),
         );
 
         let map = RwLock::new(context);
@@ -338,7 +354,6 @@ mod test {
 
     #[tokio::test]
     pub async fn test_global_get_element() {
-        FileDescriptorManager::init(2500);
         let fake_partial_folder_path = std::env::current_dir().unwrap().join(format!(
             "./test_cases/fake-db-folder/{}",
             Uuid::new_v4().to_string()
@@ -351,6 +366,7 @@ mod test {
             DataShardConfig {
                 max_offsets: Some(1),
             },
+            Arc::new(FileDescriptorManager::new(2500)),
         );
 
         context.insert_rows(&[

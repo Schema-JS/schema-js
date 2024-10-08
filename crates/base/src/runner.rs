@@ -42,7 +42,7 @@ impl SjsRunner {
 #[cfg(test)]
 mod runner_tests {
     use crate::runner::{SjsRunner, SjsRunnerConfig};
-    use schemajs_helpers::helper::HelperCall;
+    use schemajs_helpers::helper::{HelperCall, HelperDbContext};
     use serde_json::json;
     use std::path::PathBuf;
     use std::time::Duration;
@@ -65,7 +65,10 @@ mod runner_tests {
         runner
             .helper_tx
             .send(HelperCall::CustomQuery {
-                table: "users".to_string(),
+                db_ctx: HelperDbContext {
+                    table: Some("users".to_string()),
+                    db: Some("public".to_string()),
+                },
                 identifier: "helloWorld".to_string(),
                 req: json!({
                     "id": 1,

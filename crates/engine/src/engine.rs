@@ -3,6 +3,7 @@ use crate::utils::fs::is_js_or_ts;
 use anyhow::bail;
 use deno_core::ModuleSpecifier;
 use schemajs_config::{DatabaseConfig, SchemeJsConfig};
+use schemajs_data::fdm::FileDescriptorManager;
 use schemajs_dirs::create_scheme_js_folder;
 use schemajs_helpers::helper::HelperCall;
 use schemajs_primitives::table::Table;
@@ -17,6 +18,7 @@ pub struct SchemeJsEngine {
     pub data_path_dir: Option<PathBuf>,
     pub config: Arc<SchemeJsConfig>,
     pub helper_tx: Sender<HelperCall>,
+    file_descriptor_manager: Arc<FileDescriptorManager>,
 }
 
 impl SchemeJsEngine {
@@ -24,6 +26,7 @@ impl SchemeJsEngine {
         data_path: Option<PathBuf>,
         config: Arc<SchemeJsConfig>,
         helper_tx: Sender<HelperCall>,
+        file_descriptor_manager: Arc<FileDescriptorManager>,
     ) -> Self {
         create_scheme_js_folder(data_path.clone());
 
@@ -32,6 +35,7 @@ impl SchemeJsEngine {
             data_path_dir: data_path,
             config,
             helper_tx,
+            file_descriptor_manager,
         }
     }
 
@@ -88,6 +92,7 @@ impl SchemeJsEngine {
             name,
             self.helper_tx.clone(),
             self.config.db_config(name),
+            self.file_descriptor_manager.clone(),
         )))
     }
 }
@@ -111,13 +116,13 @@ mod test {
 
     #[flaky_test::flaky_test(tokio)]
     pub async fn test_db_engine() {
-        FileDescriptorManager::init(2500);
         let create_helper = create_helper_channel(1);
         let config = SchemeJsConfig::default();
         let db_engine = Arc::new(RwLock::new(SchemeJsEngine::new(
             None,
             Arc::new(config),
             create_helper.0,
+            Arc::new(FileDescriptorManager::new(2500)),
         )));
 
         // Add database

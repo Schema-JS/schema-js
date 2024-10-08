@@ -6,3 +6,7 @@ export const insertRow = async (dbName: string, tableName: string, data: any) =>
         data
     );
 }
+
+export const searchRows = async (dbName: string, tableName: string, data: any) => {
+    return await core.ops.op_engine_search_rows(dbName, tableName, data);
+}

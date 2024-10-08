@@ -28,6 +28,10 @@ once_cell.workspace = true
 scopeguard.workspace = true
 dashmap.workspace = true
 lru.workspace = true
+parking_lot.workspace = true
+
+[dev-dependencies]
+schemajs_query = { version = "0.1.0", path = "../query" }
 
 [build-dependencies]
 schemajs_core = { version = "0.1.0", path = "../core" }

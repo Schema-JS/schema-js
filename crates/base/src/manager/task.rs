@@ -1,7 +1,8 @@
 use crate::manager::task_duration::TaskDuration;
+use parking_lot::RwLock;
 use schemajs_engine::engine::SchemeJsEngine;
 use std::fmt::{Debug, Formatter};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 pub type TaskSignature =

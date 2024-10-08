@@ -97,3 +97,28 @@ impl Row for RowJson {
         todo!()
     }
 }
+
+#[cfg(test)]
+mod row_tests {
+    use crate::row::Row;
+    use crate::row_json::RowJson;
+    use schemajs_primitives::column::types::DataTypes;
+    use schemajs_primitives::column::Column;
+    use schemajs_primitives::table::Table;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    #[test]
+    pub fn json_to_row() {
+        let table = Table::new("users").add_column(Column::new("id", DataTypes::String));
+        let arc_tbl = Arc::new(table);
+
+        RowJson::from_json(
+            json!({
+                "id": "123"
+            }),
+            arc_tbl.clone(),
+        )
+        .unwrap();
+    }
+}

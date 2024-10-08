@@ -1,4 +1,5 @@
 use crate::errors::ShardErrors;
+use crate::fdm::FileDescriptorManager;
 use crate::shard::map_shard::MapShard;
 use crate::shard::{Shard, ShardConfig, TempShardConfig};
 use parking_lot::RwLock;
@@ -31,6 +32,7 @@ pub struct TempMapShard<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardCo
     pub temp_shards: Vec<S>,
     temp_opts: TempOpts,
     on_reconcile: OnReconcileCb,
+    fdm: Arc<FileDescriptorManager>,
 }
 
 impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
@@ -41,6 +43,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         prefix: &str,
         parent_shard: Arc<RwLock<MapShard<S, Opts>>>,
         temp_opts: TempOpts,
+        fdm: Arc<FileDescriptorManager>,
     ) -> Self {
         TempMapShard {
             parent_shard,
@@ -49,6 +52,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
             temp_shards: vec![],
             temp_opts,
             on_reconcile: OnReconcileCb { func: None },
+            fdm,
         }
     }
 
@@ -65,7 +69,13 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
             self.prefix.clone(),
             Uuid::new_v4().to_string()
         ));
-        S::new(shard_path, self.temp_opts.to_config(), None)
+
+        S::new(
+            shard_path,
+            self.temp_opts.to_config(),
+            None,
+            self.fdm.clone(),
+        )
     }
 
     pub fn raw_insert_rows(&mut self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
@@ -132,6 +142,9 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
             self.reconcile(from_shard, &mut parent_writer);
         }
 
+        let paths: Vec<PathBuf> = self.temp_shards.iter().map(|i| i.get_path()).collect();
+        self.fdm.remove_paths(paths);
+
         self.temp_shards.clear()
     }
 
@@ -185,6 +198,7 @@ mod test {
             data_path.clone(),
             "localdata_",
             DataShardConfig { max_offsets: None },
+            Arc::new(FileDescriptorManager::new(2500)),
         );
 
         let parent_shard = Arc::new(RwLock::new(ctx));
@@ -196,6 +210,7 @@ mod test {
             TempDataShardConfig {
                 max_offsets: TempOffsetTypes::Custom(Some(2)),
             },
+            Arc::new(FileDescriptorManager::new(2500)),
         );
 
         shard

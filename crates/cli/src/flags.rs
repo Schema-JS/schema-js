@@ -1,4 +1,4 @@
-use clap::{arg, crate_version, Command};
+use clap::{arg, crate_version, ArgAction, Command};
 
 pub(super) fn get_cli() -> Command {
     Command::new(env!("CARGO_BIN_NAME"))
@@ -21,5 +21,10 @@ fn get_start_command() -> Command {
                 .help("Path to SchemeJS.toml or directory containing it")
                 .default_value("./")
                 .env("SJS_CONFIG"),
+        )
+        .arg(
+            arg!(--"no-repl")
+                .help("Whether it should initialize the REPL when running")
+                .action(ArgAction::SetTrue),
         )
 }

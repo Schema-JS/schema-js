@@ -21,3 +21,4 @@ indexmap.workspace = true
 thiserror.workspace = true
 parking_lot.workspace = true
 lru.workspace = true
+flaky_test.workspace = true

@@ -8,7 +8,7 @@ pub mod row;
 pub mod row_json;
 mod search;
 
-#[derive(Debug, Error, Serialize, Deserialize)]
+#[derive(Debug, Error, Serialize, Deserialize, Clone)]
 pub enum RowSerializationError {
     #[error("Row Serialization error: {0}")]
     SerializationError(String),

@@ -14,3 +14,9 @@ tokio.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 schemajs_grpc = { version = "0.1.0", path = "../grpc" }
+schemajs_internal = { version = "0.1.0", path = "../internal" }
+colored = "2.1.0"
+rustyline = "14.0.0"
+enum-as-inner.workspace = true
+serde_json.workspace = true
+schemajs_helpers = { version = "0.1.0", path = "../helpers" }

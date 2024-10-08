@@ -6,7 +6,7 @@ use crate::services::shared::shared;
 use crate::utils::common::find_database;
 use crate::utils::json::{serde_json_to_prost, to_prost_struct};
 use prost_types::Any;
-use schemajs_helpers::helper::HelperCall;
+use schemajs_helpers::helper::{HelperCall, HelperDbContext};
 use schemajs_internal::auth::types::UserContext;
 use serde_json::Value;
 use std::sync::Arc;
@@ -29,7 +29,10 @@ define_sjs_grpc_service!(CustomQueryService, {
         let (helper_response_tx, mut helper_response_rx) = self.create_response_handlers();
         let result = db
             .call_helper(HelperCall::CustomQuery {
-                table: req.table_name,
+                db_ctx: HelperDbContext {
+                    db: Some(db.name.clone()),
+                    table: Some(req.table_name),
+                },
                 identifier: req.identifier,
                 req: serde_json::from_str(&req.req)
                     .map_err(|_| Status::internal("Invalid Payload"))?,

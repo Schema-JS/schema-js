@@ -1,22 +1,22 @@
 use crate::engine::SchemeJsEngine;
-use deno_core::{op2, serde_json, OpState};
+use deno_core::{op2, OpState};
 use parking_lot::RwLock;
 use schemajs_query::errors::QueryError;
+use schemajs_query::ops::query_ops::QueryOps;
 use schemajs_query::row::Row;
-use schemajs_query::row_json::{RowData, RowJson};
+use serde_json::Value;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
-use uuid::Uuid;
 
 #[op2(async)]
 #[serde]
-pub async fn op_engine_insert_row(
+pub async fn op_engine_search_rows(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
     #[string] table_name: String,
-    #[serde] mut row: serde_json::Value,
-) -> Result<Option<Uuid>, QueryError> {
+    #[serde] args: QueryOps,
+) -> Result<Vec<Value>, QueryError> {
     let mut mut_state = state.borrow_mut();
     let state = mut_state
         .borrow_mut::<Arc<RwLock<SchemeJsEngine>>>()
@@ -29,10 +29,14 @@ pub async fn op_engine_insert_row(
     };
 
     let table = query_manager.get_table(&table_name);
-    if let Some(table) = table {
-        return query_manager
-            .insert(RowJson::from_json(row, table).map_err(|_| QueryError::InvalidSerialization)?);
+    if let Some(_) = table {
+        let s = query_manager
+            .search_manager
+            .search(&table_name, &args)
+            .map_err(|_| QueryError::InvalidQuerySearch(table_name.clone()))?;
+        let vals: Vec<Value> = s.iter().filter_map(|row| row.to_json().ok()).collect();
+        return Ok(vals);
     }
 
-    return Err(QueryError::InvalidInsertion);
+    Err(QueryError::InvalidQuerySearch(table_name))
 }

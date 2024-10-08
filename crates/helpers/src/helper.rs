@@ -22,33 +22,53 @@ pub struct Helper {
 #[derive(Debug, Default)]
 pub struct SjsHelpersContainer(pub Vec<Arc<Helper>>);
 
-pub struct SjsTableHelpers(pub DashMap<String, SjsHelpersContainer>);
+impl SjsHelpersContainer {
+    pub fn new(data: Vec<Arc<Helper>>) -> Self {
+        Self(data)
+    }
+}
+
+/// DashMap<DbName, DashMap<TableName, HelperContainer>>
+pub struct SjsTableHelpers(pub DashMap<String, DashMap<String, SjsHelpersContainer>>);
 
 impl SjsTableHelpers {
-    pub fn find_custom_query_helper(&self, table: &str, identifier: &str) -> Option<Arc<Helper>> {
-        match self.0.get(table) {
+    pub fn find_custom_query_helper(
+        &self,
+        db_name: &str,
+        table: &str,
+        identifier: &str,
+    ) -> Option<Arc<Helper>> {
+        match self.0.get(db_name) {
             None => None,
             Some(val) => {
-                let helper = val
-                    .0
-                    .iter()
-                    .find(|e| e.identifier == identifier)
-                    .map(|e| e.clone());
-                helper
+                let helper = val.get(table).map(|e| {
+                    e.0.iter()
+                        .find(|e| e.identifier == identifier)
+                        .map(|e| e.clone())
+                });
+
+                helper.unwrap_or_else(|| None)
             }
         }
     }
 
-    pub fn find_hook_helper(&self, table: &str, hook: HelperType) -> Option<Arc<Helper>> {
-        match self.0.get(table) {
+    pub fn find_hook_helper(
+        &self,
+        db_name: &str,
+        table: &str,
+        hook: HelperType,
+    ) -> Option<Vec<Arc<Helper>>> {
+        match self.0.get(db_name) {
             None => None,
             Some(val) => match hook {
                 HelperType::InsertHook => {
-                    let helper = val
-                        .0
-                        .iter()
-                        .find(|e| e.internal_type.is_insert_hook())
-                        .map(|e| e.clone());
+                    let helper: Option<Vec<Arc<Helper>>> = val.get(table).map(|e| {
+                        e.0.iter()
+                            .filter(|e| e.internal_type.is_insert_hook())
+                            .map(|e| e.clone())
+                            .collect()
+                    });
+
                     helper
                 }
                 _ => None,
@@ -57,16 +77,22 @@ impl SjsTableHelpers {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct HelperDbContext {
+    pub db: Option<String>,
+    pub table: Option<String>,
+}
+
 #[derive(EnumAsInner, Debug, Clone)]
 pub enum HelperCall {
     CustomQuery {
-        table: String,
+        db_ctx: HelperDbContext,
         identifier: String,
         req: Value,
         response: UnboundedSender<Value>,
     },
     InsertHook {
-        table: String,
+        db_ctx: HelperDbContext,
         rows: Vec<Value>,
     },
 }

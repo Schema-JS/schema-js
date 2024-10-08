@@ -1,4 +1,5 @@
 use crate::manager::SchemeJsManager;
+use parking_lot::RwLock;
 use schemajs_config::SchemeJsConfig;
 use schemajs_data::fdm::FileDescriptorManager;
 use schemajs_engine::engine::SchemeJsEngine;
@@ -6,7 +7,7 @@ use schemajs_helpers::helper::HelperCall;
 use schemajs_internal::manager::InternalManager;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 
 pub struct SjsContext {
@@ -18,6 +19,8 @@ pub struct SjsContext {
     pub task_manager: Arc<RwLock<SchemeJsManager>>,
     pub config: Arc<SchemeJsConfig>,
     pub initialized: AtomicBool,
+    pub fdm: Arc<FileDescriptorManager>,
+    repl: AtomicBool,
 }
 
 impl SjsContext {
@@ -41,18 +44,15 @@ impl SjsContext {
         };
 
         let config = Arc::new(SchemeJsConfig::new(config_file.clone())?);
-
-        {
-            // Must be initialized right after the config.
-            // Otherwise there's a possibility that `get_fdm` might panic
-            // Because it has not yet been initialized
-            FileDescriptorManager::init(config.process.max_file_descriptors_in_cache)
-        }
+        let file_descriptor_manager = Arc::new(FileDescriptorManager::new(
+            config.process.max_file_descriptors_in_cache,
+        ));
 
         let mut engine = Arc::new(RwLock::new(SchemeJsEngine::new(
             data_path.clone(),
             config.clone(),
             helper_tx,
+            file_descriptor_manager.clone(),
         )));
         let mut internal_manager = Arc::new(InternalManager::new(engine.clone()));
         let mut manager = Arc::new(RwLock::new(SchemeJsManager::new(engine.clone())));
@@ -66,6 +66,8 @@ impl SjsContext {
             task_manager: manager,
             config,
             initialized: AtomicBool::new(false),
+            fdm: file_descriptor_manager,
+            repl: AtomicBool::new(true),
         })
     }
 
@@ -76,5 +78,14 @@ impl SjsContext {
     // Function to check if the struct is loaded
     pub fn is_loaded(&self) -> bool {
         self.initialized.load(Ordering::SeqCst)
+    }
+
+    pub fn mark_repl(&self) {
+        self.repl.store(true, Ordering::SeqCst);
+    }
+
+    // Function to check if the struct is loaded
+    pub fn is_repl(&self) -> bool {
+        self.repl.load(Ordering::SeqCst)
     }
 }

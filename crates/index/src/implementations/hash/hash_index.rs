@@ -7,6 +7,7 @@ use crate::index_keys::IndexKeyType;
 use crate::keys::index_key_sha256::IndexKeySha256;
 use crate::types::Index;
 use crate::vals::raw_value::RawIndexValue;
+use schemajs_data::fdm::FileDescriptorManager;
 use std::fmt::Debug;
 use std::io::{Seek, Write};
 use std::path::Path;
@@ -22,6 +23,7 @@ impl HashIndex {
         path: P,
         index_name: Option<String>,
         capacity: Option<u64>,
+        fdm: Arc<FileDescriptorManager>,
     ) -> Self {
         let index_shard = IndexShard::new(
             path,
@@ -30,6 +32,7 @@ impl HashIndex {
             HASH_INDEX_VALUE_SIZE,
             capacity,
             Some(true),
+            fdm,
         );
 
         Self {
@@ -94,18 +97,23 @@ mod test {
     use crate::keys::index_key_sha256::IndexKeySha256;
     use crate::types::Index;
     use schemajs_data::fdm::FileDescriptorManager;
+    use std::sync::Arc;
     use tempfile::tempdir;
     use uuid::Uuid;
 
     #[tokio::test]
     pub async fn test_binary_search_with_composite_keys() {
-        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
 
         let hashindx = temp_dir.as_ref().to_path_buf().join("hashindx");
         std::fs::create_dir(hashindx.clone()).unwrap();
 
-        let mut index = HashIndex::new_from_path(hashindx.clone(), None, None);
+        let mut index = HashIndex::new_from_path(
+            hashindx.clone(),
+            None,
+            None,
+            Arc::new(FileDescriptorManager::new(2500)),
+        );
 
         add_data(&mut index);
 
@@ -114,14 +122,18 @@ mod test {
 
     #[tokio::test]
     pub async fn test_binary_search_with_composite_keys_and_limit() {
-        FileDescriptorManager::init(2500);
         let temp_dir = tempdir().unwrap();
 
         let hashindx = temp_dir.as_ref().to_path_buf().join("hashindx");
         std::fs::create_dir(hashindx.clone()).unwrap();
 
         // This will create a shard every two elements
-        let mut index = HashIndex::new_from_path(hashindx.clone(), None, Some(2));
+        let mut index = HashIndex::new_from_path(
+            hashindx.clone(),
+            None,
+            Some(2),
+            Arc::new(FileDescriptorManager::new(2500)),
+        );
 
         add_data(&mut index);
 
@@ -129,7 +141,6 @@ mod test {
     }
 
     fn add_data(index: &mut HashIndex) {
-        FileDescriptorManager::init(2500);
         let usernames = vec![
             String::from("user1"),
             String::from("user2"),

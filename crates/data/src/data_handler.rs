@@ -1,4 +1,4 @@
-use crate::fdm::{get_fdm, FileDescriptorManager};
+use crate::fdm::FileDescriptorManager;
 use memmap2::Mmap;
 use parking_lot::RwLock;
 use std::fs::{File, Metadata, OpenOptions};
@@ -14,8 +14,10 @@ pub struct DataHandler {
 }
 
 impl DataHandler {
-    unsafe fn new_from_path<P: AsRef<Path> + Clone>(path: P) -> std::io::Result<Self> {
-        let fdm = get_fdm();
+    unsafe fn new_from_path<P: AsRef<Path> + Clone>(
+        path: P,
+        fdm: Arc<FileDescriptorManager>,
+    ) -> std::io::Result<Self> {
         if let Some(descriptor) = fdm.pop_insert(&path) {
             let file = descriptor.file.read();
             Ok(Self {
@@ -37,8 +39,11 @@ impl DataHandler {
         &self.mmap
     }
 
-    pub unsafe fn new<P: AsRef<Path> + Clone>(path: P) -> std::io::Result<RwLock<Self>> {
-        Ok(RwLock::new(Self::new_from_path(path)?))
+    pub unsafe fn new<P: AsRef<Path> + Clone>(
+        path: P,
+        fdm: Arc<FileDescriptorManager>,
+    ) -> std::io::Result<RwLock<Self>> {
+        Ok(RwLock::new(Self::new_from_path(path, fdm)?))
     }
 
     pub fn len(&self) -> usize {
@@ -58,7 +63,7 @@ impl DataHandler {
     where
         F: FnOnce(&mut File) -> std::io::Result<R>,
     {
-        let fdm = get_fdm();
+        let fdm = self.fdm.clone();
         if let Some(fd) = fdm.get(&self.path) {
             let mut writer = fd.file.write();
             let cb = callback(&mut writer)?;

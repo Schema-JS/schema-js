@@ -6,6 +6,7 @@ use crate::row::Row;
 use crate::search::search_manager::QuerySearchManager;
 use chashmap::CHashMap;
 use schemajs_config::DatabaseConfig;
+use schemajs_data::fdm::FileDescriptorManager;
 use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
 use schemajs_data::shard::temp_map_shard::DataWithIndex;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
@@ -45,6 +46,8 @@ pub struct SingleQueryManager<T: Row> {
     pub helper_tx: Sender<HelperCall>,
 
     pub database_config: Arc<DatabaseConfig>,
+
+    pub fdm: Arc<FileDescriptorManager>,
 }
 
 /// `SingleQueryManager` is responsible for managing all query-related operations
@@ -78,6 +81,7 @@ impl<T: Row> SingleQueryManager<T> {
         scheme: String,
         helper_tx: Sender<HelperCall>,
         database_config: Arc<DatabaseConfig>,
+        file_descriptor_manager: Arc<FileDescriptorManager>,
     ) -> Self {
         let uuid = Uuid::new_v4();
         let tables = Arc::new(CHashMap::default());
@@ -91,6 +95,7 @@ impl<T: Row> SingleQueryManager<T> {
             data_path: None,
             helper_tx,
             database_config,
+            fdm: file_descriptor_manager,
         }
     }
 
@@ -125,6 +130,7 @@ impl<T: Row> SingleQueryManager<T> {
                 },
                 self.helper_tx.clone(),
                 &self.database_config,
+                self.fdm.clone(),
             ),
         );
     }
