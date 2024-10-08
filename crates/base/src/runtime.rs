@@ -663,19 +663,9 @@ mod test {
     #[tokio::test]
     pub async fn test_query_ops() {
         let (tx, rx) = create_helper_channel(1);
-        let data_path = format!("./test_cases/data/{}", Uuid::new_v4().to_string());
-        let data_path = std::env::current_dir()
-            .unwrap()
-            .join(PathBuf::from(data_path.as_str()));
-
         {
             let context = Arc::new(
-                SjsContext::new(
-                    PathBuf::from("./test_cases/default-db"),
-                    Some(data_path.clone()),
-                    tx,
-                )
-                .unwrap(),
+                SjsContext::new(PathBuf::from("./test_cases/default-db"), None, tx).unwrap(),
             );
             let mut rt = SchemeJsRuntime::new(context.clone()).await.unwrap();
 
@@ -713,7 +703,6 @@ mod test {
             let vals = a.as_array().unwrap();
             assert_eq!(vals[0].get("username").unwrap().as_str().unwrap(), "Luis");
         }
-        std::fs::remove_dir_all(data_path).unwrap();
     }
 
     #[tokio::test]

@@ -189,7 +189,7 @@ mod test {
             .join(PathBuf::from(data_path.as_str()));
 
         if !data_path.exists() {
-            std::fs::create_dir(data_path.clone().clone()).unwrap();
+            std::fs::create_dir_all(data_path.clone().clone()).unwrap();
         }
 
         let ctx = MapShard::<DataShard, DataShardConfig>::new(
