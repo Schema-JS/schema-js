@@ -14,7 +14,7 @@ pub fn create_scheme_js_folder(base_path: Option<PathBuf>) {
 
     for path in paths {
         if !path.exists() {
-            std::fs::create_dir(path).unwrap();
+            let _ = std::fs::create_dir(&path);
         }
     }
 }
@@ -23,7 +23,7 @@ pub fn create_scheme_js_db(base_path: Option<PathBuf>, db_name: &str) -> PathBuf
     let path = get_base_path(base_path).join("dbs").join(db_name);
 
     if !path.exists() {
-        std::fs::create_dir(path.clone()).unwrap();
+        let _ = std::fs::create_dir(path.clone());
     }
 
     path
@@ -40,7 +40,7 @@ pub fn create_schema_js_table(
         .join(table_name);
 
     if !path.exists() {
-        std::fs::create_dir(path.clone()).unwrap();
+        let _ = std::fs::create_dir(path.clone());
     }
 
     path
@@ -54,7 +54,7 @@ pub fn create_indx_folder(base_path: Option<PathBuf>, db_name: &str, table_name:
         .join("indxs");
 
     if !path.exists() {
-        std::fs::create_dir(path.clone()).unwrap();
+        let _ = std::fs::create_dir(path.clone());
     }
 
     path
