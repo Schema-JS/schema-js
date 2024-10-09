@@ -24,7 +24,13 @@ jobs:
 
   cargo-test:
     name: "cargo test"
-    runs-on: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: windows-latest
+
     steps:
       - name: Remove unwanted software
         run: |
