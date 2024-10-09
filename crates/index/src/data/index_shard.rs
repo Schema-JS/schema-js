@@ -12,7 +12,6 @@ use schemajs_data::U64_SIZE;
 use std::cmp::Ordering;
 use std::io::{Seek, Write};
 use std::marker::PhantomData;
-use std::os::unix::fs::FileExt;
 use std::path::Path;
 use std::sync::Arc;
 

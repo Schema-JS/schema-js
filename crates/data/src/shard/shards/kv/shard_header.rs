@@ -1,10 +1,10 @@
 use crate::data_handler::DataHandler;
 use crate::shard::shards::UUID_BYTE_LEN;
+use crate::utils::fs::write_at;
 use crate::U64_SIZE;
 use parking_lot::RwLock;
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
-use std::os::unix::fs::FileExt;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -147,8 +147,7 @@ impl KvShardHeader {
 
     pub fn increment_len(&mut self, len: Option<u64>, file: &mut File) -> u64 {
         self.items_len += len.unwrap_or(1);
-        file.write_at(&self.items_len.to_le_bytes(), U64_SIZE as u64)
-            .unwrap();
+        write_at(file, &self.items_len.to_le_bytes(), U64_SIZE as u64).unwrap();
 
         self.items_len
     }

@@ -5,7 +5,8 @@ use crate::{I64_SIZE, U64_SIZE};
 use parking_lot::RwLock;
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
-use std::os::unix::fs::FileExt;
+
+use crate::utils::fs::write_at;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -162,9 +163,9 @@ impl DataShardHeader {
                 None => Err(ShardErrors::OutOfPositions),
                 Some(pos) => {
                     let offset_bytes = value.to_le_bytes();
-                    file.write_at(&offset_bytes, pos as u64)
+                    write_at(file, &offset_bytes, pos as u64)
                         .expect("Failed to write offset to file");
-                    file.write_at(&available_index.to_le_bytes(), U64_SIZE as u64)
+                    write_at(file, &available_index.to_le_bytes(), U64_SIZE as u64)
                         .map_err(|_| ShardErrors::ErrorAddingHeaderOffset)?;
                     self.last_offset_index = available_index as i64;
                     Ok(())

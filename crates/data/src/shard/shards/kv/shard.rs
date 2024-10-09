@@ -6,10 +6,10 @@ use crate::shard::shards::kv::shard_header::KvShardHeader;
 use crate::shard::shards::kv::util::get_element_offset;
 use crate::shard::{AvailableSpace, Shard};
 use crate::utils::flatten;
+use crate::utils::fs::write_at;
 use parking_lot::RwLock;
 use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
-use std::os::unix::fs::FileExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -42,11 +42,13 @@ impl KvShard {
         first_element: &[u8],
         second_element: &[u8],
     ) -> Result<(), std::io::Error> {
-        file.write_at(
+        write_at(
+            file,
             second_element,
             Self::get_element_offset(i, self.value_size) as u64,
         )?;
-        file.write_at(
+        write_at(
+            file,
             first_element,
             Self::get_element_offset(i - 1, self.value_size) as u64,
         )?;

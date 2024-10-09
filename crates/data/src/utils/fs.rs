@@ -1,4 +1,8 @@
+use std::fs::File;
 use std::io;
+use std::io::{Seek, SeekFrom, Write};
+#[cfg(target_family = "unix")]
+use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
 
 pub fn list_files_with_prefix<P: AsRef<Path> + Clone>(
@@ -17,4 +21,13 @@ pub fn list_files_with_prefix<P: AsRef<Path> + Clone>(
             }
         })
         .collect::<Vec<_>>())
+}
+
+pub fn write_at(file: &mut File, buf: &[u8], offset: u64) -> io::Result<usize> {
+    if cfg!(target_family = "unix") {
+        file.write_at(buf, offset)
+    } else {
+        let _ = file.seek(SeekFrom::Start(offset))?;
+        file.write_all(buf).map(|e| buf.len())
+    }
 }
