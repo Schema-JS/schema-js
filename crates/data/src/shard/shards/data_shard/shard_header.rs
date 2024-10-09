@@ -214,16 +214,23 @@ impl DataShardHeader {
         // Read the pointer
         let bytes = match self.data.read().read_pointer(offset as u64, U64_SIZE) {
             Some(bytes) => bytes,
-            None => return None,
+            None => {
+                println!("Early return from bytes");
+                return None;
+            },
         };
 
         // Convert Vec<u8> to [u8; 8]
         let arr: [u8; 8] = match bytes.try_into() {
             Ok(arr) => arr,
-            Err(_) => return None,
+            Err(_) => {
+                println!("Early return from arr");
+                return None;
+            },
         };
 
         let val = u64::from_le_bytes(arr);
+        println!("val {} for offset {}", val, offset);
 
         if offset > self.zero_offset && val == 0 {
             None
