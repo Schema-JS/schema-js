@@ -184,9 +184,7 @@ impl<T: Row> QuerySearchManager<T> {
         for pointer in pointers {
             let tbl_data = get_table_shard.data.read();
             let data = tbl_data.get_element(pointer as usize).unwrap();
-            println!("Trying to read pointer {}", pointer);
             results.push(T::from_slice(&data, get_table_shard.table.clone()));
-            println!("Fully read");
         }
 
         Ok(results)

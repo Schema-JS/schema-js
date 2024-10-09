@@ -28,18 +28,12 @@ impl DataShard {
         let item_pos =
             { header_read.get_offset_value_from_offset_header(offset_position_in_header) };
 
-        println!(
-            "Offset {} has a value of {:?}",
-            offset_position_in_header, item_pos
-        );
-
         match item_pos {
             None => Err(ShardErrors::UnknownOffset),
             Some(start_pos) => {
                 let data_reader = self.data.read();
                 let end_pos = {
                     let next_offset_pos = offset_position_in_header + U64_SIZE;
-                    // println!("Next offset pos {}, max offset pos {}", next_offset_pos, header_read.max_offset_positions);
                     assert!(next_offset_pos <= header_read.max_offset_positions);
                     let mut no_more_positions = false;
 
@@ -112,10 +106,6 @@ impl Shard<DataShardConfig> for DataShard {
     fn read_item_from_index(&self, index: usize) -> Result<Vec<u8>, ShardErrors> {
         let header = self.header.read();
         let offset_pos_in_header = header.get_offset_pos_by_index(index);
-        println!(
-            "Index {} has an offset of {:?}",
-            index, offset_pos_in_header
-        );
         match offset_pos_in_header {
             None => Err(ShardErrors::UnknownOffset),
             Some(pos_in_header) => self.read_item(pos_in_header),
