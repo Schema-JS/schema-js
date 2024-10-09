@@ -49,7 +49,6 @@ impl Row for RowJson {
     }
 
     fn from_slice(slice: &[u8], table: Arc<Table>) -> Self {
-        println!("{:?}", slice);
         RowJson {
             table,
             values: serde_json::from_slice(slice).unwrap(),
