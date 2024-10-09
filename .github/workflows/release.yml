@@ -74,7 +74,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: artifacts-*
           merge-multiple: true
 
       - run: ls -R artifacts
