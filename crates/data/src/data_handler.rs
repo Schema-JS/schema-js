@@ -74,6 +74,11 @@ impl DataHandler {
 
             writer.flush()?;
 
+            #[cfg(target_os = "linux")]
+            {
+                writer.sync_all()?;
+            }
+
             let new_mmap = unsafe { Self::mmap(&writer) };
             self.mmap = new_mmap?;
 

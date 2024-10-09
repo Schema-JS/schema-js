@@ -217,7 +217,7 @@ impl DataShardHeader {
             None => {
                 println!("Early return from bytes");
                 return None;
-            },
+            }
         };
 
         // Convert Vec<u8> to [u8; 8]
@@ -226,7 +226,7 @@ impl DataShardHeader {
             Err(_) => {
                 println!("Early return from arr");
                 return None;
-            },
+            }
         };
 
         let val = u64::from_le_bytes(arr);
