@@ -67,6 +67,11 @@ impl DataShard {
 
                 println!("End pos: {}", end_pos);
                 println!("Reading from {} to {}", start_pos, length);
+                println!(
+                    "Normalized reading from {} to {} ",
+                    start_pos,
+                    (start_pos as usize) + length
+                );
 
                 let read_bytes = data_reader.read_pointer(start_pos, length);
                 match read_bytes {
