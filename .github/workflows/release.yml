@@ -74,17 +74,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: artifacts-*
+          merge-multiple: true
 
-      - name: Release
-        uses: ncipollo/release-action@v1
+      - run: ls -R artifacts
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
         with:
-          tag: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          prerelease: contains(github.event.inputs.tag, '-')
-          discussionCategory: 'announcements'
-          draft: true
-          allowUpdates: true
-          replacesArtifacts: true
-          artifacts: 'artifacts/release/*.zip'
-          generateReleaseNotes: true
-          token: ${{ github.token }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: artifacts/schemejs-*
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true
