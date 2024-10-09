@@ -116,6 +116,7 @@ impl Shard<DataShardConfig> for DataShard {
     fn read_item_from_index(&self, index: usize) -> Result<Vec<u8>, ShardErrors> {
         let header = self.header.read();
         let offset_pos_in_header = header.get_offset_pos_by_index(index);
+        println!("Item offset {}: {:?}", index, offset_pos_in_header);
         match offset_pos_in_header {
             None => Err(ShardErrors::UnknownOffset),
             Some(pos_in_header) => self.read_item(pos_in_header),
