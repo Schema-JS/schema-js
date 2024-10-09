@@ -21,6 +21,8 @@ pub struct DataShardHeader {
     pub id: Uuid,
     data: Arc<RwLock<DataHandler>>,
     zero_offset: usize,
+    header_size: usize,
+    offset_space_size: usize,
 }
 
 impl DataShardHeader {
@@ -32,7 +34,22 @@ impl DataShardHeader {
             max_offset_positions: Self::calculate_offset_pos(max_offsets as usize),
             data,
             zero_offset: Self::calculate_offset_pos(0),
+            header_size: Self::calculate_header_size(max_offsets),
+            offset_space_size: Self::calculate_offset_space_size(max_offsets),
         }
+    }
+
+    fn calculate_offset_space_size(max_offsets: u64) -> usize {
+        (max_offsets as usize) * U64_SIZE
+    }
+
+    fn calculate_header_size(max_offsets: u64) -> usize {
+        let max_offsets_size = U64_SIZE;
+        let last_offset_index_size = I64_SIZE;
+        let offsets_size = Self::calculate_offset_space_size(max_offsets);
+        let id_len = UUID_BYTE_LEN as usize;
+
+        max_offsets_size + last_offset_index_size + offsets_size + id_len
     }
 
     pub fn get_max_offsets(&self) -> u64 {
@@ -67,18 +84,8 @@ impl DataShardHeader {
                 file.seek(SeekFrom::Start(0))
                     .expect("Failed to seek to start of file");
 
-                // Header Items
-                // Keep this in the order of the struct
-                let max_offsets_size = U64_SIZE;
-                let last_offset_index_size = I64_SIZE;
-                let offsets_size = (self.max_offsets as usize) * U64_SIZE;
-                let id_len = UUID_BYTE_LEN as usize;
-
-                // Calculate header size
-                let header_size = max_offsets_size + last_offset_index_size + offsets_size + id_len;
-
                 // Create a buffer for the header
-                let mut buffer = Vec::with_capacity(header_size);
+                let mut buffer = Vec::with_capacity(self.header_size);
 
                 {
                     // Write max_offsets to the buffer
@@ -100,7 +107,7 @@ impl DataShardHeader {
 
                 {
                     // Pre-allocate space for offsets by writing zeroed bytes
-                    let zero_bytes = vec![0u8; offsets_size];
+                    let zero_bytes = vec![0u8; self.offset_space_size];
                     buffer.extend_from_slice(&zero_bytes);
                 }
 
@@ -218,11 +225,14 @@ impl DataShardHeader {
 
         let val = u64::from_le_bytes(arr);
 
-        if offset > self.zero_offset && val <= 0 {
+        if offset > self.zero_offset && val == 0 {
             None
         } else {
-            // Convert the byte array to u64
-            Some(val)
+            if val == 0 {
+                None
+            } else {
+                Some(val)
+            }
         }
     }
 

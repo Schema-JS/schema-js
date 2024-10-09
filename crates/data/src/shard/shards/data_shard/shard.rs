@@ -41,26 +41,16 @@ impl DataShard {
                         no_more_positions = true;
                     }
 
-                    let end_reading = {
-                        if no_more_positions {
-                            Some(0)
-                        } else {
-                            header_read.get_offset_value_from_offset_header(next_offset_pos)
-                        }
-                    };
-
-                    // Item might have not been inserted yet, so we read till the end of the file
-                    let read_up_to = if let Some(end_pos) = end_reading {
-                        if end_pos == 0 {
-                            data_reader.len() as u64
-                        } else {
-                            end_pos
-                        }
+                    let end_reading = if no_more_positions {
+                        data_reader.len()
                     } else {
-                        data_reader.len() as u64
+                        header_read
+                            .get_offset_value_from_offset_header(next_offset_pos)
+                            .map(|e| e as usize)
+                            .unwrap_or_else(|| data_reader.len())
                     };
 
-                    read_up_to
+                    end_reading as u64
                 };
 
                 let length = (end_pos - start_pos) as usize;
@@ -180,6 +170,7 @@ mod test {
     use std::fs::File;
     use std::io::Read;
     use std::sync::{Arc, RwLock};
+    use std::time::Duration;
     use tempfile::{tempdir, tempfile};
     use uuid::Uuid;
 
@@ -328,6 +319,43 @@ mod test {
 
         thread_1.join().unwrap();
         thread_2.join().unwrap();
+
+        /*let item = shard.read().unwrap().header.read().unwrap().offsets.len();
+        assert_eq!(item, 2);*/
+    }
+
+    #[tokio::test]
+    pub async fn test_data_shard_threads_read_() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir
+            .path()
+            .join(format!("{}.bin", Uuid::new_v4().to_string()));
+
+        let data_shard = DataShard::new(
+            file_path,
+            DataShardConfig {
+                max_offsets: Some(2),
+            },
+            None,
+            Arc::new(FileDescriptorManager::new(2500)),
+        );
+        let shard = Arc::new(RwLock::new(data_shard));
+
+        let ref_shard = shard.clone();
+        let thread_1 = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            ref_shard
+                .write()
+                .unwrap()
+                .insert_item(&[&b"Hello World".to_vec()])
+                .unwrap();
+        });
+        let a = shard.read().unwrap().read_item_from_index(0);
+        assert!(a.is_err());
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        let a = shard.read().unwrap().read_item_from_index(0);
+        assert!(a.is_ok());
+        assert_eq!(a.unwrap(), b"Hello World");
 
         /*let item = shard.read().unwrap().header.read().unwrap().offsets.len();
         assert_eq!(item, 2);*/

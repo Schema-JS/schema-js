@@ -12,7 +12,7 @@ impl FileDescriptor {
         let load_file = OpenOptions::new()
             .create(true)
             .read(true)
-            .append(true)
+            .write(true)
             .open(path.clone())?;
 
         Ok(Self {
