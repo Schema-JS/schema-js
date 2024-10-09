@@ -71,14 +71,6 @@ impl DataHandler {
         if let Some(fd) = fdm.get(&self.path) {
             let mut writer = fd.file.write();
             let cb = callback(&mut writer)?;
-
-            writer.flush()?;
-
-            #[cfg(target_os = "linux")]
-            {
-                writer.sync_all()?;
-            }
-
             let new_mmap = unsafe { Self::mmap(&writer) };
             self.mmap = new_mmap?;
 
