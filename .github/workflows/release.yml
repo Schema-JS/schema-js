@@ -37,6 +37,9 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
       - name: Build
         uses: actions-rs/cargo@v1
         with:
