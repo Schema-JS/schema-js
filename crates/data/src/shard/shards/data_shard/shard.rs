@@ -65,6 +65,9 @@ impl DataShard {
 
                 let length = (end_pos - start_pos) as usize;
 
+                println!("End pos: {}", end_pos);
+                println!("Reading from {} to {}", start_pos, length);
+
                 let read_bytes = data_reader.read_pointer(start_pos, length);
                 match read_bytes {
                     None => Err(ShardErrors::ErrorReadingByteRange),
