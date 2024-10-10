@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-pub const BASE_SCHEME_JS_FOLDER: &str = ".scheme-js";
+pub const BASE_SCHEME_JS_FOLDER: &str = ".schema-js";
 
 pub fn get_base_path(base_path: Option<PathBuf>) -> PathBuf {
     base_path.unwrap_or_else(|| dirs::data_dir().unwrap().join(BASE_SCHEME_JS_FOLDER))

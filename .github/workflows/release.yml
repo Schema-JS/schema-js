@@ -50,17 +50,17 @@ jobs:
 
       - name: Get Binary path
         id: binary
-        run: echo "::set-output name=path::target/${{ matrix.target }}/release/schemejs${{ runner.os == 'windows' && '.exe' || '' }}"
+        run: echo "::set-output name=path::target/${{ matrix.target }}/release/schemajs${{ runner.os == 'windows' && '.exe' || '' }}"
 
       - name: Zip Builds
         shell: pwsh
-        run: Compress-Archive -CompressionLevel Optimal -Force -Path ${{ steps.binary.outputs.path }}, README.md, LICENSE -DestinationPath schemejs-${{ matrix.target }}.zip
+        run: Compress-Archive -CompressionLevel Optimal -Force -Path ${{ steps.binary.outputs.path }}, README.md, LICENSE -DestinationPath schemajs-${{ matrix.target }}.zip
 
       - name: Upload Release Builds
         uses: actions/upload-artifact@v4
         with:
-          name: schemejs-${{ matrix.target }}
-          path: schemejs-${{ matrix.target }}.zip
+          name: schemajs-${{ matrix.target }}
+          path: schemajs-${{ matrix.target }}.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -82,7 +82,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: artifacts/schemejs-*
+          file: artifacts/schemajs-*
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true

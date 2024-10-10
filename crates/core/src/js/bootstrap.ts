@@ -13,7 +13,7 @@ globalThis.bootstrap = (params: BootstrapParams) => {
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
 
-    addImmutableGlobal("SchemeJS", SJSGlobal.SchemeJS);
+    addImmutableGlobal("SchemaJS", SJSGlobal.SchemaJS);
 
     if(params.repl) {
         addImmutableGlobal("SJS_REPL", true);

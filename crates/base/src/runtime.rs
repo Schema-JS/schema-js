@@ -472,7 +472,7 @@ mod test {
             create_rt.ctx.config_file,
             std::env::current_dir()
                 .unwrap()
-                .join("./test_cases/default-db/SchemeJS.toml")
+                .join("./test_cases/default-db/SchemaJS.toml")
         );
 
         Ok(())
@@ -502,7 +502,7 @@ mod test {
 
             for i in 0..num_inserts {
                 script.push_str(&format!(
-                    r#"globalThis.SchemeJS.rawInsert("{}", "{}", {});"#,
+                    r#"globalThis.SchemaJS.rawInsert("{}", "{}", {});"#,
                     "public",
                     "users",
                     serde_json::json!({
@@ -548,7 +548,7 @@ mod test {
 
                 for i in 0..num_inserts {
                     script.push_str(&format!(
-                        r#"globalThis.SchemeJS.rawInsert("{}", "{}", {});"#,
+                        r#"globalThis.SchemaJS.rawInsert("{}", "{}", {});"#,
                         "public",
                         "users",
                         serde_json::json!({
@@ -621,7 +621,7 @@ mod test {
             let mut script = String::new();
 
             script.push_str(&format!(
-                r#"globalThis.SchemeJS.insert({});"#,
+                r#"globalThis.SchemaJS.insert({});"#,
                 serde_json::json!({
                     "id": "ABCD"
                 })
@@ -640,7 +640,7 @@ mod test {
 
             let mut script = String::new();
             script.push_str(&format!(
-                r#"globalThis.SchemeJS.insert({});"#,
+                r#"globalThis.SchemaJS.insert({});"#,
                 serde_json::json!({
                     "id": "ABCD"
                 })
@@ -728,7 +728,7 @@ mod test {
 
             for i in 0..num_inserts {
                 script.push_str(&format!(
-                    r#"globalThis.SchemeJS.rawInsert("{}", "{}", {});"#,
+                    r#"globalThis.SchemaJS.rawInsert("{}", "{}", {});"#,
                     "public",
                     "users",
                     serde_json::json!({
@@ -759,7 +759,7 @@ mod test {
     pub async fn test_runtime_config_as_file() -> anyhow::Result<()> {
         let (tx, rx) = create_helper_channel(1);
         let create_rt = SchemeJsRuntime::new(Arc::new(SjsContext::new(
-            PathBuf::from("./test_cases/default-db/CustomSchemeJS.toml"),
+            PathBuf::from("./test_cases/default-db/CustomSchemaJS.toml"),
             None,
             tx,
         )?))
@@ -775,7 +775,7 @@ mod test {
             create_rt.ctx.config_file,
             std::env::current_dir()
                 .unwrap()
-                .join("./test_cases/default-db/CustomSchemeJS.toml")
+                .join("./test_cases/default-db/CustomSchemaJS.toml")
         );
 
         Ok(())
