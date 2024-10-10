@@ -1,5 +1,5 @@
 export default function main() {
-    const { Table, Column, print, QueryBuilder, query } = SchemeJS;
+    const { Table, Column, print, QueryBuilder, query } = SchemaJS;
     return new Table("users")
         .addColumn(new Column("id").string())
         .addColumn(new Column("username").string())

@@ -35,7 +35,7 @@ impl SjsContext {
 
         // Determine the appropriate folder path and config file path
         let (folder_path, config_file) = if base_path.is_dir() {
-            (base_path.clone(), base_path.join("SchemeJS.toml"))
+            (base_path.clone(), base_path.join("SchemaJS.toml"))
         } else {
             let folder_path = base_path.parent().map_or_else(
                 || std::env::current_dir(),

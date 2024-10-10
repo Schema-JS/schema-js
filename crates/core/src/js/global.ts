@@ -2,7 +2,7 @@ import * as SJsPrimitives from "ext:sjs_primitives/src/js/index.ts"
 import { insertRow, searchRows } from "ext:sjs_engine/src/js/ops.ts";
 import { QueryBuilder } from "ext:sjs_engine/src/js/query.ts";
 const core = globalThis.Deno.core;
-class SchemeJS {
+class SchemaJS {
 
     static get Table() {
         return SJsPrimitives.Table;
@@ -34,9 +34,9 @@ class SchemeJS {
                 tblName = data.length === 2 ? data[0] : tblName;
 
                 if(!dbName) {
-                    throw new Error("SchemeJS.insert requires a database");
+                    throw new Error("SchemaJS.insert requires a database");
                 } else if(!tblName) {
-                    throw new Error("SchemeJS.insert requires a table. `SchemeJS.insert(table_name, row)`");
+                    throw new Error("SchemaJS.insert requires a table. `SchemaJS.insert(table_name, row)`");
                 }
 
                 return insertRow(dbName, tblName, data.length === 2 ? data[1] : data[0]);
@@ -47,7 +47,7 @@ class SchemeJS {
     static get query() {
         return (q: QueryBuilder) => {
             if(!(q instanceof QueryBuilder)) {
-                throw new Error("Queries must be performed with SchemeJS.QueryBuilder");
+                throw new Error("Queries must be performed with SchemaJS.QueryBuilder");
             } else {
                 return searchRows(q.dbName, q.tableName, q.build())
             }
@@ -61,5 +61,5 @@ class SchemeJS {
 }
 
 export const SJSGlobal = {
-    SchemeJS
+    SchemaJS
 }

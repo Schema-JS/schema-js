@@ -18,7 +18,7 @@ fn get_start_command() -> Command {
         )
         .arg(
             arg!(-c --config <HOST>)
-                .help("Path to SchemeJS.toml or directory containing it")
+                .help("Path to SchemaJS.toml or directory containing it")
                 .default_value("./")
                 .env("SJS_CONFIG"),
         )
