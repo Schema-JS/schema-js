@@ -1,4 +1,7 @@
 export enum DataTypes {
+    Null = "Null",
+    Uuid = "Uuid",
     String = "String",
-    Boolean = "Boolean"
+    Boolean = "Boolean",
+    Number = "Number"
 }

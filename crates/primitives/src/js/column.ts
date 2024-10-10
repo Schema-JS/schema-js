@@ -14,6 +14,11 @@ export class Column {
         this.dataType = dataType || DataTypes.String;
     }
 
+    uuid() {
+        this.dataType = DataTypes.Uuid;
+        return this;
+    }
+
     string() {
         this.dataType = DataTypes.String;
         return this;
@@ -21,6 +26,11 @@ export class Column {
 
     boolean() {
         this.dataType = DataTypes.Boolean;
+        return this;
+    }
+
+    number() {
+        this.dataType = DataTypes.Number;
         return this;
     }
 
