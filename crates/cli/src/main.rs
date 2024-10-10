@@ -3,6 +3,8 @@ mod flags;
 
 use crate::cmd::start::{start, StartOpts};
 use crate::flags::get_cli;
+use clap::crate_version;
+use colored::Colorize;
 
 #[tokio::main]
 async fn main() {
@@ -21,6 +23,14 @@ async fn main() {
             })
             .await;
         }
-        _ => {}
+        _ => {
+            println!();
+            println!("SJS {}", crate_version!());
+            println!();
+            println!("Run '{}' for help.", "schemajs --help".blue());
+            println!();
+            println!("Stuck? Join our Discord https://discord.gg/nRzTHygKn5");
+            println!();
+        }
     };
 }
