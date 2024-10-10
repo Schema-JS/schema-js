@@ -226,11 +226,6 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
                 // Calculate the local index within the selected shard
                 let local_index = index % breaking_point_usize;
 
-                println!(
-                    "Getting from shard {} with local index {}",
-                    shard_index, local_index
-                );
-
                 self.get_element_from_specific(shard_reversed[shard_index], local_index)
             }
         }
