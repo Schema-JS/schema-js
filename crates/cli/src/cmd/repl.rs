@@ -98,7 +98,7 @@ pub(crate) async fn repl(runner: Arc<SjsRunner>) {
                 } else if input == "exit" {
                     handle_exit_command(&mut current_query_state);
                 } else {
-                    let result = rt.run_repl_script(input);
+                    let result = rt.run_repl_script(input).await;
 
                     if let Ok(res) = result {
                         println!("{}", res.unwrap_or_else(|| serde_json::Value::Null))
