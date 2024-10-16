@@ -280,7 +280,7 @@ dependencies = [
 
 [[package]]
 name = "base"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "dashmap 6.1.0",
@@ -638,7 +638,7 @@ checksum = "1462739cb27611015575c0c11df5df7601141071f07518d56fcc1be504cbec97"
 
 [[package]]
 name = "cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "base",
@@ -2751,7 +2751,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_config"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "paste",
@@ -2761,7 +2761,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.21.7",
  "data-url",
@@ -2779,7 +2779,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_data"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "borsh",
  "enum-as-inner",
@@ -2799,14 +2799,14 @@ dependencies = [
 
 [[package]]
 name = "schemajs_dirs"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "dirs",
 ]
 
 [[package]]
 name = "schemajs_engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "borsh",
@@ -2831,7 +2831,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_grpc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "prost",
  "prost-types",
@@ -2852,7 +2852,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_helpers"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "dashmap 6.1.0",
  "deno_core",
@@ -2868,7 +2868,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_index"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "enum-as-inner",
@@ -2884,7 +2884,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_internal"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bcrypt",
  "dashmap 6.1.0",
@@ -2900,7 +2900,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_module_loader"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2937,7 +2937,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_primitives"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "deno_core",
  "enum-as-inner",
@@ -2950,7 +2950,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_query"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ahash",
  "anyhow",
@@ -2975,7 +2975,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_repl"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "deno_core",
  "enum-as-inner",
@@ -2986,7 +2986,7 @@ dependencies = [
 
 [[package]]
 name = "schemajs_workers"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "enum-as-inner",

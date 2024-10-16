@@ -1,8 +1,9 @@
 [package]
 name = "cli"
-version = "0.1.0"
-edition = "2021"
-description = "A server based on Deno runtime, capable of running JavaScript, TypeScript, and WASM services"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
 
 [[bin]]
 name = "schemajs"
