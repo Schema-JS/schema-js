@@ -1,11 +1,10 @@
 [package]
 name = "schemajs_repl"
-version = "0.1.0"
-authors = ["Andres Pirela <andreespirela@outlook.com>"]
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
 resolver = "2"
-description = "We'll take care of this later"
-license = "MIT"
 
 [dependencies]
 deno_core.workspace = true

@@ -19,6 +19,14 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+version = "0.1.1"
+authors = ["Andres Pirela", "SchemaJS Authors"]
+description = "A flexible, blazingly fast NoSQL database built on V8 with dynamic JavaScript-based schema and query management."
+documentation = "https://docs.schemajs.com"
+edition = "2021"
+license = "MIT"
+
 [workspace.dependencies]
 toml = "0.8.17"
 serde = { version = "1.0.204", features = ["derive"] }
