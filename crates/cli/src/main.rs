@@ -1,6 +1,7 @@
 mod cmd;
 mod flags;
 
+use crate::cmd::init::{init_cmd, InitOpts};
 use crate::cmd::start::{start, StartOpts};
 use crate::flags::get_cli;
 use clap::crate_version;
@@ -22,6 +23,10 @@ async fn main() {
                 repl: no_repl.unwrap_or(false),
             })
             .await;
+        }
+        Some(("init", sub_matches)) => {
+            let dir = sub_matches.get_one::<String>("directory").cloned();
+            init_cmd(InitOpts { dir });
         }
         _ => {
             println!();

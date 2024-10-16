@@ -5,6 +5,7 @@ pub(super) fn get_cli() -> Command {
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .version(format!("SJS {}", crate_version!()))
         .subcommand(get_start_command())
+        .subcommand(get_init_command())
 }
 
 fn get_start_command() -> Command {
@@ -26,5 +27,15 @@ fn get_start_command() -> Command {
             arg!(--"no-repl")
                 .help("Whether it should initialize the REPL when running")
                 .action(ArgAction::SetTrue),
+        )
+}
+
+fn get_init_command() -> Command {
+    Command::new("init")
+        .about("Initializes boilerplate files for SJS to run in the specified directory (Default to running dir)")
+        .arg(
+            arg!(-d --directory <DIRECTORY>)
+                .help("The directory where boilerplate files will be initialized")
+                .required(false)
         )
 }
