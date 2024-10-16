@@ -20,3 +20,5 @@ rustyline = "14.0.0"
 enum-as-inner.workspace = true
 serde_json.workspace = true
 schemajs_helpers = { version = "0.1.0", path = "../helpers" }
+schemajs_repl = { version = "0.1.0", path = "../repl" }
+schemajs_core = { version = "0.1.0", path = "../core" }

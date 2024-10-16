@@ -299,6 +299,7 @@ dependencies = [
  "schemajs_module_loader",
  "schemajs_primitives",
  "schemajs_query",
+ "schemajs_repl",
  "schemajs_workers",
  "scopeguard",
  "serde",
@@ -645,9 +646,11 @@ dependencies = [
  "colored",
  "enum-as-inner",
  "rustyline",
+ "schemajs_core",
  "schemajs_grpc",
  "schemajs_helpers",
  "schemajs_internal",
+ "schemajs_repl",
  "serde_json",
  "tokio",
 ]
@@ -2968,6 +2971,17 @@ dependencies = [
  "thiserror",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "schemajs_repl"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "enum-as-inner",
+ "schemajs_core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

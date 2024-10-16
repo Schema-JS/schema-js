@@ -4,7 +4,6 @@ use base::runtime::SchemeJsRuntime;
 use clap::crate_version;
 use colored::Colorize;
 use schemajs_grpc::server::{GrpcServer, GrpcServerArgs};
-use schemajs_internal::manager::InternalManager;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -62,7 +61,7 @@ pub(crate) async fn start(opts: StartOpts) {
 
     if !no_repl {
         let _repl = repl(arc_runner).await;
+    } else {
+        loop {}
     }
-
-    loop {}
 }

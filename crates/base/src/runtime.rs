@@ -63,6 +63,7 @@ impl SchemeJsRuntime {
             schemajs_core::sjs_core::init_ops(),
             schemajs_engine::sjs_engine::init_ops(),
             schemajs_helpers::sjs_helpers::init_ops(),
+            schemajs_repl::sjs_repl::init_ops(),
         ];
 
         let runtime_opts = RuntimeOptions {
@@ -335,22 +336,6 @@ impl SchemeJsRuntime {
                     }
                 }
             }
-        }
-    }
-
-    pub async fn run_repl_script(&mut self, script: String) -> Result<Option<serde_json::Value>> {
-        let res = self
-            .js_runtime
-            .execute_script(located_script_name!(), ModuleCodeString::from(script));
-        match res {
-            Ok(res) => {
-                let resolve = self.js_runtime.resolve_value(res).await?;
-                let scope = &mut self.js_runtime.handle_scope();
-                let local = v8::Local::new(scope, resolve);
-                let to_json = serde_v8::from_v8::<serde_json::Value>(scope, local).ok();
-                Ok(to_json)
-            }
-            Err(e) => Err(e),
         }
     }
 
