@@ -15,6 +15,7 @@ members = [
     "./crates/internal",
     "./crates/grpc",
     "./crates/helpers",
+    "./crates/repl",
 ]
 resolver = "2"
 

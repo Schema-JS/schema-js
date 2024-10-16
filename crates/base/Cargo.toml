@@ -14,6 +14,7 @@ schemajs_core = { version = "0.1.0", path = "../core" }
 schemajs_module_loader = { version = "0.1.0", path = "../module_loader" }
 schemajs_internal = { version = "0.1.0", path = "../internal" }
 schemajs_data = { version = "0.1.0", path = "../data" }
+schemajs_repl = { version = "0.1.0", path = "../repl" }
 serde.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
@@ -38,4 +39,5 @@ schemajs_core = { version = "0.1.0", path = "../core" }
 schemajs_primitives = { version = "0.1.0", path = "../primitives" }
 schemajs_engine = { version = "0.1.0", path = "../engine" }
 schemajs_helpers = { version = "0.1.0", path = "../helpers" }
+schemajs_repl = { version = "0.1.0", path = "../repl" }
 deno_core.workspace = true

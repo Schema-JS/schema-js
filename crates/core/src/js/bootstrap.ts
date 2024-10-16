@@ -1,6 +1,7 @@
 import { addImmutableGlobal } from "ext:sjs_core/src/js/fieldUtils.ts";
 import { SJSGlobal } from "ext:sjs_core/src/js/global.ts";
 import { initializeDbContext } from "ext:sjs_engine/src/js/context.ts";
+import { use, exit, close } from "ext:sjs_repl/src/js/repl.ts";
 
 interface BootstrapParams {
     repl: boolean
@@ -17,7 +18,17 @@ globalThis.bootstrap = (params: BootstrapParams) => {
 
     if(params.repl) {
         addImmutableGlobal("SJS_REPL", true);
+        addImmutableGlobal("use", use);
+        addImmutableGlobal("exit", exit);
+        addImmutableGlobal("close", close);
     }
+
+    globalThis.initializeDbContext({
+        tblName: undefined,
+        dbName: undefined,
+        REPL_EXIT: false
+    })
+
 
     delete globalThis.bootstrap;
 }

@@ -4,13 +4,12 @@ use colored::Colorize;
 use rustyline::error::ReadlineError;
 use rustyline::history::DefaultHistory;
 use rustyline::{DefaultEditor, Editor};
+use schemajs_core::GlobalContext;
+use schemajs_repl::errors::{ReplError, ReplErrorResponse};
+use schemajs_repl::query_state::ReplQueryState;
+use schemajs_repl::{get_current_db_context, get_query_state, run_repl_script};
+use serde_json::Value;
 use std::sync::Arc;
-
-enum ReplQueryState {
-    Global,
-    Database(String),      // Holds the current database name
-    Table(String, String), // Holds both the current database and table names
-}
 
 enum InputResult {
     Line(String),
@@ -19,42 +18,33 @@ enum InputResult {
     Error(String),
 }
 
-fn handle_use_command(input: &str, current_query_state: &mut ReplQueryState) {
-    if input.starts_with("use ") {
-        let name = input.trim_start_matches("use ").to_string();
-        match &current_query_state {
-            ReplQueryState::Global => {
-                *current_query_state = ReplQueryState::Database(name);
+fn handle_repl_error(val: &Value) -> bool {
+    if let Some(_) = val.get("REPL_ERR") {
+        let err = ReplErrorResponse::from(val);
+        match err.error {
+            ReplError::AlreadyInContext => {
+                println!(
+                    "[{}] Already in database context. Exit by calling `exit()` or by doing `use(dbName, tableName)`",
+                    "Info".yellow()
+                );
             }
-            ReplQueryState::Database(db) => {
-                *current_query_state = ReplQueryState::Table(db.clone(), name);
+            ReplError::UnexpectedUseArgsLength => {
+                println!(
+                    "[{}] Method `use` is expecting two arguments.",
+                    "Error".red()
+                );
             }
-            ReplQueryState::Table(db_name, _) => {
-                *current_query_state = ReplQueryState::Table(db_name.clone(), name);
+            ReplError::AlreadyInGlobal => {
+                println!(
+                    "[{}] Already in global context. Press CTRL+C or type `close()` to exit.",
+                    "Info".yellow()
+                );
             }
         }
+        return true;
     }
-}
 
-fn handle_exit_command(current_query_state: &mut ReplQueryState) {
-    match current_query_state {
-        ReplQueryState::Table(db_name, _) => {
-            *current_query_state = ReplQueryState::Database(db_name.clone());
-        }
-        ReplQueryState::Database(_) => {
-            *current_query_state = ReplQueryState::Global;
-        }
-        ReplQueryState::Global => {
-            println!(
-                "[{}] Already in global context. Press CTRL+C to exit.",
-                "Info".yellow()
-            );
-        }
-    }
-}
-
-fn set_db_context(rt: &mut SchemeJsRuntime, db: Option<String>, tbl: Option<String>) {
-    let _ = rt.raw_set_db_context(&db, &tbl);
+    false
 }
 
 pub(crate) async fn repl(runner: Arc<SjsRunner>) {
@@ -67,25 +57,21 @@ pub(crate) async fn repl(runner: Arc<SjsRunner>) {
     println!("> {}", "REPL is running".yellow());
     println!();
 
-    let mut current_query_state = ReplQueryState::Global;
+    let mut context = GlobalContext::default();
     let mut rl = DefaultEditor::new().unwrap();
 
     loop {
+        let current_query_state = get_query_state(&context);
+
+        if context.repl_exit {
+            break;
+        }
+
         let cmd_prefix = {
             match &current_query_state {
-                ReplQueryState::Global => {
-                    format!("({}) > ", "global".green())
-                }
-                ReplQueryState::Database(db) => {
-                    set_db_context(&mut rt, Some(db.clone()), None);
-
-                    format!("({}) > ", db.green())
-                }
-                ReplQueryState::Table(db, tbl) => {
-                    set_db_context(&mut rt, Some(db.clone()), Some(tbl.clone()));
-
-                    format!("({}.{}) > ", db.green(), tbl.blue())
-                }
+                ReplQueryState::Global => format!("({}) > ", "global".green()),
+                ReplQueryState::Database(db) => format!("({}) > ", db.green()),
+                ReplQueryState::Table(db, tbl) => format!("({}.{}) > ", db.green(), tbl.blue()),
             }
         };
 
@@ -93,20 +79,23 @@ pub(crate) async fn repl(runner: Arc<SjsRunner>) {
 
         match input {
             InputResult::Line(input) => {
-                if input.starts_with("use ") {
-                    handle_use_command(&input, &mut current_query_state);
-                } else if input == "exit" {
-                    handle_exit_command(&mut current_query_state);
-                } else {
-                    let result = rt.run_repl_script(input).await;
+                let result = run_repl_script(&mut rt.js_runtime, input).await;
+                context = get_current_db_context(&mut rt.js_runtime);
 
-                    if let Ok(res) = result {
-                        println!("{}", res.unwrap_or_else(|| serde_json::Value::Null))
-                    } else {
-                        let err = result.err().unwrap();
-                        println!("[{}] {}", "Error".red(), err);
+                if let Ok(res) = result {
+                    if let Some(res) = res {
+                        let err = handle_repl_error(&res);
+                        if !err {
+                            if !res.is_null() {
+                                println!("{}", res);
+                            }
+                        }
                     }
+                } else {
+                    let err = result.err().unwrap();
+                    println!("[{}] {}", "Error".red(), err);
                 }
+                println!();
             }
             InputResult::CtrlC => {
                 break;

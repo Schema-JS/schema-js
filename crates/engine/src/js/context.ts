@@ -4,5 +4,8 @@ interface Params {
     tblName: string,
 }
 export const initializeDbContext = (params: Params) => {
-    addImmutableGlobal("SJS_CONTEXT", params);
+    addImmutableGlobal("SJS_CONTEXT", {
+        ...(globalThis.SJS_CONTEXT || {}),
+        ...params
+    });
 }
