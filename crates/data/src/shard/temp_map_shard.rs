@@ -124,6 +124,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig, TempOpts: TempShardConfig<Opts>>
         // TODO: What if the row is inserted `target.insert_rows` but, the reconciling (call_on_reconcile) fails?
         for item_index in indexes {
             let binary_item = shard.read_item_from_index(item_index as usize).unwrap();
+            let binary_item = binary_item.get_used_data().to_vec();
             let pos = target.insert_rows(&[&binary_item]);
             reconciling_items.push(DataWithIndex {
                 data: binary_item,
@@ -254,7 +255,7 @@ mod test {
         let _temp_shard = shard.temp_shards.first().unwrap();
         println!("{}", _temp_shard.get_last_index());
         let item = _temp_shard.read_item_from_index(0).unwrap();
-        assert_eq!("2:Hello Dogs".as_bytes().to_vec(), item);
+        assert_eq!("2:Hello Dogs".as_bytes().to_vec(), item.get_used_data());
 
         // Now that's reconciled. Parent should have the two records inserted.
         let parent_items_len = parent_shard
@@ -275,8 +276,14 @@ mod test {
             .current_master_shard
             .read_item_from_index(1)
             .unwrap();
-        assert_eq!("0:Hello world".as_bytes().to_vec(), parent_item_1);
-        assert_eq!("1:Hello Cats".as_bytes().to_vec(), parent_item_2);
+        assert_eq!(
+            "0:Hello world".as_bytes().to_vec(),
+            parent_item_1.get_used_data()
+        );
+        assert_eq!(
+            "1:Hello Cats".as_bytes().to_vec(),
+            parent_item_2.get_used_data()
+        );
 
         std::fs::remove_dir_all(data_path).unwrap()
     }

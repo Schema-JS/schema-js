@@ -19,10 +19,16 @@ pub struct Table {
     pub metadata: TableMetadata,
 }
 
-static UID_COL: LazyLock<Column> = LazyLock::new(|| {
-    Column::new("_uid", DataTypes::Uuid)
-        .set_required(true)
-        .set_primary_key(true)
+static INTERNAL_COLUMNS: LazyLock<HashMap<String, Column>> = LazyLock::new(|| {
+    let mut map = HashMap::new();
+    map.insert(
+        "_uid".to_string(),
+        Column::new("_uid", DataTypes::Uuid)
+            .set_required(true)
+            .set_primary_key(true),
+    );
+
+    map
 });
 
 static UID_INDEX: LazyLock<Index> = LazyLock::new(|| Index {
@@ -30,6 +36,8 @@ static UID_INDEX: LazyLock<Index> = LazyLock::new(|| Index {
     members: vec!["_uid".to_string()],
     index_type: IndexType::Hash,
 });
+
+static RESERVED_COLUMN_NAMES: [&str; 1] = ["_uid"];
 
 impl Table {
     pub fn new(name: &str) -> Self {
@@ -43,11 +51,10 @@ impl Table {
     }
 
     pub fn init(&mut self) {
-        self.columns
-            .insert("_uid".to_string(), Self::get_internal_uid().clone());
+        self.raw_add_column(Self::get_internal_uid().clone());
 
         for (col_name, col) in &self.columns {
-            if col_name == "_uid" {
+            if RESERVED_COLUMN_NAMES.contains(&col_name.as_str()) {
                 continue;
             }
 
@@ -60,28 +67,41 @@ impl Table {
             }
         }
 
-        self.indexes.push(Self::get_internal_uid_index().clone());
+        self.raw_add_index(Self::get_internal_uid_index().clone());
     }
 
     pub fn get_internal_uid<'a>() -> &'a Column {
-        &*UID_COL
+        (&*INTERNAL_COLUMNS).get("_uid").unwrap()
     }
 
     fn get_internal_uid_index<'a>() -> &'a Index {
         &*UID_INDEX
     }
 
+    fn raw_add_index(&mut self, index: Index) {
+        let exists = self.indexes.iter().any(|i| i.name == index.name);
+        if !exists {
+            self.indexes.push(index);
+        }
+    }
+
     pub fn add_index(mut self, index: Index) -> Self {
-        self.indexes.push(index);
+        self.raw_add_index(index);
         self
     }
 
-    pub fn add_column(mut self, column: Column) -> Self {
+    fn raw_add_column(&mut self, column: Column) {
         if column.primary_key {
             self.primary_key = column.name.clone();
         }
 
-        self.columns.insert(column.name.clone(), column);
+        if !self.columns.contains_key(&column.name) {
+            self.columns.insert(column.name.clone(), column);
+        }
+    }
+
+    pub fn add_column(mut self, column: Column) -> Self {
+        self.raw_add_column(column);
         self
     }
 

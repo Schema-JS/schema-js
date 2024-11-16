@@ -4,6 +4,7 @@ use crate::utils::get_entry_size;
 use parking_lot::RwLock;
 use schemajs_data::errors::ShardErrors;
 use schemajs_data::fdm::FileDescriptorManager;
+use schemajs_data::shard::item_type::ShardItem;
 use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::kv::config::KvShardConfig;
 use schemajs_data::shard::shards::kv::shard::KvShard;
@@ -73,7 +74,9 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         shard: &KvShard,
         index: usize,
     ) -> Result<Vec<u8>, ShardErrors> {
-        shard.read_item_from_index(index)
+        shard
+            .read_item_from_index(index)
+            .map(|e| e.get_used_data().to_vec())
     }
 
     pub fn get_entry(&self, index: usize, global: bool) -> Option<IndexEntry> {
@@ -84,7 +87,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         };
 
         match get_el {
-            Ok(el) => Some(self.build_entry_from_vec(el)?),
+            Ok(el) => Some(self.build_entry_from_vec(el.get_used_data().to_vec())?),
             Err(_) => None,
         }
     }
@@ -144,7 +147,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
 
                 let shards = {
                     let mut shards = vec![&reader.current_master_shard];
-                    let combined_shards: Vec<&KvShard> = past_master_shards.values().collect();
+                    let combined_shards: Vec<&Arc<KvShard>> = past_master_shards.values().collect();
                     shards.extend(combined_shards);
                     shards
                 };
@@ -215,6 +218,11 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         while i > 0 {
             let (curr_index, _, curr_original_el) = self.get_kv(i as usize, false).unwrap();
             let (prev_index, _, prev_original_el) = self.get_kv(i as usize - 1, false).unwrap();
+
+            let curr_original_el =
+                ShardItem::new_complete(curr_original_el.as_slice(), false).to_vec();
+            let prev_original_el =
+                ShardItem::new_complete(prev_original_el.as_slice(), false).to_vec();
 
             match curr_index.cmp(&prev_index) {
                 Ordering::Less => {

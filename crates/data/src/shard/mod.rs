@@ -1,9 +1,12 @@
 use crate::errors::ShardErrors;
 use crate::fdm::FileDescriptorManager;
+use crate::shard::item_type::ShardItem;
+use crate::shard::map_shard::MapShard;
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
+pub mod item_type;
 pub mod map_shard;
 pub mod shards;
 pub mod temp_collection;
@@ -86,11 +89,21 @@ pub trait Shard<Opts: ShardConfig> {
 
     fn get_last_index(&self) -> i64;
 
-    fn read_item_from_index(&self, index: usize) -> Result<Vec<u8>, ShardErrors>;
+    fn read_item_from_index(&self, index: usize) -> Result<ShardItem, ShardErrors>;
 
     fn available_space(&self) -> AvailableSpace;
 
     fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors>;
+
+    fn update_items(
+        &self,
+        data: Vec<(u64, &[u8])>,
+        map_shard: &mut MapShard<Self, Opts>,
+    ) -> Result<(), ShardErrors>
+    where
+        Self: Sized;
+
+    fn remove_items(&self, offsets: &[u64]) -> Result<(), ShardErrors>;
 
     fn get_id(&self) -> String;
 }

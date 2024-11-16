@@ -12,6 +12,8 @@ pub struct Column {
     pub comment: Option<String>,
     pub primary_key: bool,
     pub default_index: Option<bool>,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub is_internal: bool,
 }
 
 impl Column {
@@ -24,6 +26,7 @@ impl Column {
             required: false,
             primary_key: false,
             default_index: Some(true),
+            is_internal: false,
         }
     }
 
@@ -49,6 +52,11 @@ impl Column {
 
     pub fn set_default_index(mut self, default_index: bool) -> Self {
         self.default_index = Some(default_index);
+        self
+    }
+
+    pub fn set_internal(mut self) -> Self {
+        self.is_internal = true;
         self
     }
 }

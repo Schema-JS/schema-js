@@ -26,4 +26,8 @@ pub enum ShardErrors {
     UnknownShard,
     #[error("Invalid locking detected")]
     InvalidLocking,
+    #[error("Invalid Deletion")]
+    FailedDeletion,
+    #[error("Invalid Update")]
+    FailedUpdate,
 }

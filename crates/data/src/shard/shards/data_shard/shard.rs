@@ -1,14 +1,18 @@
 use crate::data_handler::DataHandler;
 use crate::errors::ShardErrors;
 use crate::fdm::FileDescriptorManager;
+use crate::shard::item_type::{ShardItem, ShardItemType};
+use crate::shard::map_shard::MapShard;
 use crate::shard::shards::data_shard::config::DataShardConfig;
 use crate::shard::shards::data_shard::shard_header::DataShardHeader;
 use crate::shard::{AvailableSpace, Shard};
 use crate::utils::flatten;
+use crate::utils::fs::write_at;
 use crate::U64_SIZE;
 use parking_lot::RwLock;
 use std::io::{Error, ErrorKind, Seek, SeekFrom, Write};
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -22,7 +26,7 @@ pub struct DataShard {
 
 impl DataShard {
     /// Reads data of type T from the given position to the next position in offsets
-    pub fn read_item(&self, offset_position_in_header: usize) -> Result<Vec<u8>, ShardErrors> {
+    pub fn read_item(&self, offset_position_in_header: usize) -> Result<ShardItem, ShardErrors> {
         let header_read = self.header.read();
 
         let item_pos =
@@ -58,10 +62,39 @@ impl DataShard {
                 let read_bytes = data_reader.read_pointer(start_pos, length);
                 match read_bytes {
                     None => Err(ShardErrors::ErrorReadingByteRange),
-                    Some(b) => Ok(b),
+                    Some(b) => Ok({
+                        let mut item = ShardItem::from(b);
+                        item.set_internal_pos(start_pos as usize);
+                        item
+                    }),
                 }
             }
         }
+    }
+
+    pub(crate) fn prepare_item_insert(&self, item: &[u8]) -> Vec<u8> {
+        ShardItem::new(item).to_vec()
+    }
+
+    fn find_offsets_by_index(&self, indexes: &[u64]) -> Vec<(u64, u64)> {
+        let mut pos_to_modify = vec![];
+
+        for &index in indexes {
+            if let Ok(_) = self.read_item_from_index(index as usize) {
+                if let Some(off_in_header) =
+                    self.header.read().get_offset_pos_by_index(index as usize)
+                {
+                    if let Some(item_start_pos) = self
+                        .header
+                        .read()
+                        .get_offset_value_from_offset_header(off_in_header)
+                    {
+                        pos_to_modify.push((item_start_pos, index));
+                    }
+                }
+            }
+        }
+        pos_to_modify
     }
 }
 
@@ -103,7 +136,7 @@ impl Shard<DataShardConfig> for DataShard {
         header_reader.get_last_offset_index()
     }
 
-    fn read_item_from_index(&self, index: usize) -> Result<Vec<u8>, ShardErrors> {
+    fn read_item_from_index(&self, index: usize) -> Result<ShardItem, ShardErrors> {
         let header = self.header.read();
         let offset_pos_in_header = header.get_offset_pos_by_index(index);
         match offset_pos_in_header {
@@ -121,7 +154,14 @@ impl Shard<DataShardConfig> for DataShard {
     fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
         let mut header_write = self.header.write();
         let op = self.data.write().operate(|file| {
-            let write_data = flatten(data);
+            let prepare_data: Vec<Vec<u8>> = data
+                .iter()
+                .map(|&row| self.prepare_item_insert(row))
+                .collect();
+
+            let write_data: Vec<&[u8]> = prepare_data.iter().map(|row| row.as_slice()).collect();
+
+            let write_data = flatten(write_data);
 
             // Calculate the current end of the file
             let end_of_file = file
@@ -134,7 +174,7 @@ impl Shard<DataShardConfig> for DataShard {
 
             let mut curr_offset = end_of_file;
 
-            for item in data {
+            for item in prepare_data {
                 header_write
                     .add_next_offset(curr_offset, file)
                     .map_err(|_| Error::new(ErrorKind::OutOfMemory, "Out of position"))?;
@@ -155,6 +195,96 @@ impl Shard<DataShardConfig> for DataShard {
         }
     }
 
+    fn update_items(
+        &self,
+        data: Vec<(u64, &[u8])>,
+        map_shard: &mut MapShard<Self, DataShardConfig>,
+    ) -> Result<(), ShardErrors>
+    where
+        Self: Sized,
+    {
+        let mut items_to_update = vec![];
+        let mut items_to_move = vec![];
+
+        for (index, update_data) in data {
+            let item = self.read_item_from_index(index as usize);
+            match item {
+                Ok(mut res) => {
+                    res.update(update_data);
+
+                    let internal_pos = res.get_internal_pos().unwrap();
+
+                    if res.shard_item_type.is_moved() {
+                        items_to_move.push((internal_pos, ShardItem::new(update_data), res))
+                    } else {
+                        items_to_update.push((internal_pos, res));
+                    }
+                }
+                Err(_) => continue,
+            }
+        }
+
+        self.data
+            .write()
+            .operate(|file| {
+                for (offset, item) in items_to_update {
+                    write_at(file, &item.to_vec(), offset as u64)?;
+                }
+
+                Ok(())
+            })
+            .map_err(|_| ShardErrors::FailedUpdate)?;
+
+        self.data
+            .write()
+            .operate(|file| {
+                for (offset, new_item, mut original) in items_to_move {
+                    let insert_new_item = map_shard.insert_rows(&[new_item.get_used_data()]); // TODO: Insert from data item
+                    let shard = {
+                        let (shard, local_indx) = map_shard
+                            .get_shard_by_global_item_index(insert_new_item)
+                            .unwrap();
+                        (shard.get_id(), local_indx)
+                    };
+
+                    original.moved_shard_id = Some(Uuid::from_str(shard.0.as_str()).unwrap()); // Todo: Unwrap
+                    original.moved_offset = Some(shard.1);
+
+                    write_at(file, &original.to_vec(), offset as u64)?;
+                }
+
+                Ok(())
+            })
+            .map_err(|_| ShardErrors::FailedUpdate)?;
+
+        Ok(())
+    }
+
+    fn remove_items(&self, indexes: &[u64]) -> Result<(), ShardErrors> {
+        let pos_to_modify = self.find_offsets_by_index(indexes);
+
+        let deletion_result = self.data.write().operate(|file| {
+            for (pos, _) in pos_to_modify {
+                write_at(file, &ShardItemType::Deleted.get_le_identifier(), pos)
+                    .map_err(|_| Error::new(ErrorKind::Other, ShardErrors::FailedDeletion))?;
+            }
+            Ok(())
+        });
+
+        if let Err(e) = deletion_result {
+            let error = e
+                .downcast::<ShardErrors>()
+                .unwrap_or_else(|_| ShardErrors::FlushingError);
+            return Err(if error.is_failed_deletion() {
+                error
+            } else {
+                ShardErrors::FlushingError
+            });
+        }
+
+        Ok(())
+    }
+
     fn get_id(&self) -> String {
         self.id.to_string()
     }
@@ -164,15 +294,21 @@ impl Shard<DataShardConfig> for DataShard {
 mod test {
     use crate::errors::ShardErrors;
     use crate::fdm::FileDescriptorManager;
+    use crate::shard::item_type::{ShardItem, ShardItemType};
     use crate::shard::shards::data_shard::config::DataShardConfig;
     use crate::shard::shards::data_shard::shard::DataShard;
     use crate::shard::Shard;
-    use std::fs::File;
-    use std::io::Read;
+    use std::io::{Error, ErrorKind, Read};
     use std::sync::{Arc, RwLock};
     use std::time::Duration;
     use tempfile::{tempdir, tempfile};
     use uuid::Uuid;
+
+    #[tokio::test]
+    pub async fn test_err() {
+        let a = Error::new(ErrorKind::Other, ShardErrors::FailedDeletion);
+        assert!(a.downcast::<ShardErrors>().unwrap().is_failed_deletion());
+    }
 
     #[tokio::test]
     pub async fn test_data_shard() {
@@ -217,13 +353,13 @@ mod test {
         }*/
 
         let item = data_shard.read_item_from_index(0).unwrap();
-        assert_eq!(item, "Hello World".as_bytes().to_vec());
+        assert_eq!(item.get_used_data(), "Hello World".as_bytes().to_vec());
 
         let item = data_shard.read_item_from_index(9).unwrap();
-        assert_eq!(item, "String".as_bytes().to_vec());
+        assert_eq!(item.get_used_data(), "String".as_bytes().to_vec());
 
         let item = data_shard.read_item_from_index(5).unwrap();
-        assert_eq!(item, "1".as_bytes().to_vec());
+        assert_eq!(item.get_used_data(), "1".as_bytes().to_vec());
 
         let item = data_shard.insert_item(&[&vec![1, 2, 3]]);
         assert!(item.is_err());
@@ -231,6 +367,46 @@ mod test {
 
         // let res: Vec<u64> = vec![104, 115, 128, 137, 142, 146, 147, 151, 156, 174];
         // assert_eq!(res, shards.header.read().unwrap().offsets);
+    }
+
+    #[tokio::test]
+    pub async fn test_delete_from_shard() {
+        let temp_dir = tempdir().unwrap();
+        let file_path = temp_dir
+            .path()
+            .join(format!("{}.bin", Uuid::new_v4().to_string()));
+
+        let config = DataShardConfig {
+            max_offsets: Some(4),
+        };
+
+        let data_shard = DataShard::new(
+            file_path.clone(),
+            config,
+            None,
+            Arc::new(FileDescriptorManager::new(2500)),
+        );
+
+        let strs = ["A", "B", "C", "D"];
+
+        let collect_into_slices: Vec<&[u8]> = strs.iter().map(|i| i.as_bytes()).collect();
+        data_shard.insert_item(&collect_into_slices).unwrap();
+
+        let item1 = data_shard.read_item_from_index(0).unwrap();
+        let item2 = data_shard.read_item_from_index(1).unwrap();
+        let item3 = data_shard.read_item_from_index(2).unwrap();
+        let item4 = data_shard.read_item_from_index(3).unwrap();
+
+        assert!(item1.shard_item_type.is_raw());
+        assert!(item2.shard_item_type.is_raw());
+        assert!(item3.shard_item_type.is_raw());
+        assert!(item4.shard_item_type.is_raw());
+
+        data_shard.remove_items(&[1, 2]).unwrap();
+        let item2 = data_shard.read_item_from_index(1).unwrap();
+        let item3 = data_shard.read_item_from_index(2).unwrap();
+        assert!(item2.shard_item_type.is_deleted());
+        assert!(item3.shard_item_type.is_deleted());
     }
 
     #[tokio::test]
@@ -355,7 +531,7 @@ mod test {
         tokio::time::sleep(Duration::from_secs(5)).await;
         let a = shard.read().unwrap().read_item_from_index(0);
         assert!(a.is_ok());
-        assert_eq!(a.unwrap(), b"Hello World");
+        assert_eq!(a.unwrap().get_used_data(), b"Hello World");
 
         /*let item = shard.read().unwrap().header.read().unwrap().offsets.len();
         assert_eq!(item, 2);*/
