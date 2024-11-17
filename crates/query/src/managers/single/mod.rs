@@ -256,6 +256,8 @@ impl<T: Row> SingleQueryManager<T> {
         Ok(id)
     }
 
+    pub fn delete(&self, row_indexes: &[u64]) {}
+
     pub fn get_table(&self, table_name: &str) -> Option<Arc<Table>> {
         self.tables.get(table_name).map(|e| e.table.clone())
     }
