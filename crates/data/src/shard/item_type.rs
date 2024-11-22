@@ -1,3 +1,4 @@
+use crate::cursor::Cursor;
 use crate::shard::shards::UUID_BYTE_LEN;
 use crate::U64_SIZE;
 use enum_as_inner::EnumAsInner;
@@ -39,6 +40,8 @@ pub struct ShardItem {
     pub shard_item_type: ShardItemType,
     pub max_size: usize,
     pub used_size: usize,
+    pub current_shard_id: Uuid,
+    pub current_offset: usize,
     pub moved_shard_id: Option<Uuid>,
     pub moved_offset: Option<usize>,
     pub data: Vec<u8>,
@@ -46,7 +49,12 @@ pub struct ShardItem {
 }
 
 impl ShardItem {
-    pub fn new_complete(item: &[u8], threshold_extra_space: bool) -> Self {
+    pub fn new_complete(
+        item: &[u8],
+        shard_id: Uuid,
+        offset: usize,
+        threshold_extra_space: bool,
+    ) -> Self {
         let item_type = ShardItemType::Raw;
         let item_len = item.len();
 
@@ -78,6 +86,8 @@ impl ShardItem {
             moved_offset: None,
             data,
             internal_position: None,
+            current_shard_id: shard_id,
+            current_offset: offset,
         }
     }
 
@@ -89,8 +99,8 @@ impl ShardItem {
         self.internal_position
     }
 
-    pub fn new(item: &[u8]) -> Self {
-        Self::new_complete(item, true)
+    pub fn new(item: &[u8], shard_id: Uuid, offset: usize) -> Self {
+        Self::new_complete(item, shard_id, offset, true)
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
@@ -100,6 +110,8 @@ impl ShardItem {
 
         let inner_metadata = {
             let mut metadata: Vec<u8> = vec![];
+            metadata.extend_from_slice(&self.current_shard_id.to_bytes_le());
+            metadata.extend_from_slice(&self.current_offset.to_le_bytes());
             metadata.extend_from_slice(&(item_len as u64).to_le_bytes());
             metadata.extend_from_slice(&(self.max_size as u64).to_le_bytes());
 
@@ -145,6 +157,10 @@ impl ShardItem {
     pub fn calculate_size(content: &[u8]) -> usize {
         // self.shard_item_type
         let mut initial_size: usize = 1;
+        // Current Shard Id
+        initial_size += UUID_BYTE_LEN as usize;
+        // internal_position
+        initial_size += U64_SIZE;
         // item_len = u64 = 8b
         initial_size += U64_SIZE;
         // self.max_size = u64 = 8b
@@ -164,18 +180,20 @@ impl ShardItem {
 
 impl From<Vec<u8>> for ShardItem {
     fn from(value: Vec<u8>) -> Self {
-        let item_type = &value[0..1];
+        let mut cursor = Cursor::new(&value);
+        let item_type = cursor.consume(1).unwrap();
         let item_type = ShardItemType::from_le_bytes(item_type[0]).unwrap();
 
-        let item_metadata_len = &value[1..(U64_SIZE + 1)];
-        let item_metadata_le_bytes_input: [u8; 8] = item_metadata_len.try_into().unwrap();
-        let item_metadata_usize = usize::from_le_bytes(item_metadata_le_bytes_input);
-        let inner_metadata = &value[9..(9 + item_metadata_usize)];
-        let item_len = &inner_metadata[0..8];
-        let max_size = &inner_metadata[8..16];
+        let _ = cursor.consume(U64_SIZE).unwrap(); // Consume metadata len before consuming the actual metadata
+
+        let curr_shard_id = cursor.consume(UUID_BYTE_LEN as usize).unwrap();
+        let curr_offset = cursor.consume(U64_SIZE).unwrap();
+        let item_len = cursor.consume(U64_SIZE).unwrap();
+        let max_size = cursor.consume(U64_SIZE).unwrap();
+
         let item_len_le_bytes: [u8; 8] = item_len.try_into().unwrap();
         let max_size_le_bytes: [u8; 8] = max_size.try_into().unwrap();
-        let uuid_and_offset = &inner_metadata[16..item_metadata_usize];
+        let uuid_and_offset = cursor.consume(UUID_BYTE_LEN as usize + U64_SIZE).unwrap();
         let uuid = &uuid_and_offset[0..(UUID_BYTE_LEN as usize)];
         let offset = &uuid_and_offset[(UUID_BYTE_LEN as usize)..];
 
@@ -186,7 +204,7 @@ impl From<Vec<u8>> for ShardItem {
         };
 
         // Offset will always be read if UUID is active. Because it means it has been moved.
-        let offset = if uuid.is_none() && item_type.is_moved() {
+        let offset = if uuid.is_none() {
             None
         } else {
             let moved_offset_le: [u8; 8] = offset.try_into().unwrap();
@@ -201,6 +219,8 @@ impl From<Vec<u8>> for ShardItem {
             shard_item_type: item_type,
             max_size: max_size as usize,
             used_size: u64::from_le_bytes(item_len_le_bytes) as usize,
+            current_shard_id: Uuid::from_bytes_le(curr_shard_id.to_vec().try_into().unwrap()),
+            current_offset: u64::from_le_bytes(curr_offset.try_into().unwrap()) as usize,
             moved_shard_id: uuid,
             moved_offset: offset,
             data: data.to_vec(),
@@ -211,13 +231,17 @@ impl From<Vec<u8>> for ShardItem {
 
 #[cfg(test)]
 mod test {
+    use crate::cursor::Cursor;
     use crate::shard::item_type::{ShardItem, ShardItemType};
+    use crate::shard::shards::UUID_BYTE_LEN;
     use crate::U64_SIZE;
     use uuid::Uuid;
 
     #[tokio::test]
     pub async fn test_item_deserialization() {
-        let item = ShardItem::new(b"Hello");
+        let shard_id = Uuid::new_v4();
+        let offset = 20;
+        let item = ShardItem::new(b"Hello", shard_id, offset);
         assert_eq!(
             item.data,
             &[72, 101, 108, 108, 111, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -233,6 +257,8 @@ mod test {
         assert_eq!(from_vec.moved_offset, item.moved_offset);
         assert_eq!(from_vec.moved_shard_id, item.moved_shard_id);
         assert_eq!(from_vec.shard_item_type, item.shard_item_type);
+        assert_eq!(from_vec.current_shard_id, item.current_shard_id);
+        assert_eq!(from_vec.current_offset, item.current_offset);
 
         // assert content
         assert_eq!(from_vec.get_used_data(), b"Hello");
@@ -240,7 +266,9 @@ mod test {
 
     #[tokio::test]
     pub async fn test_item_moved_with_offset_0() {
-        let mut item = ShardItem::new(b"Hello");
+        let shard_id = Uuid::new_v4();
+        let offset = 30;
+        let mut item = ShardItem::new(b"Hello", shard_id, offset);
         let id = Uuid::new_v4();
         item.moved_offset = Some(0);
         item.moved_shard_id = Some(id.clone());
@@ -251,7 +279,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_item_moved() {
-        let mut item = ShardItem::new(b"Hello");
+        let mut item = ShardItem::new(b"Hello", Uuid::new_v4(), 27);
         let id = Uuid::new_v4();
         item.moved_offset = Some(1);
         item.moved_shard_id = Some(id.clone());
@@ -266,33 +294,39 @@ mod test {
 
     #[tokio::test]
     pub async fn test_item_serialization() {
-        let item = ShardItem::new(b"Hello");
+        let item = ShardItem::new(b"Hello", Uuid::new_v4(), 33);
         let to_vec = item.to_vec();
 
-        let item_type = &to_vec[0..1];
+        let mut cursor = Cursor::new(&to_vec);
+
+        let item_type = cursor.consume(1).unwrap();
         assert_eq!(item_type.len(), 1);
         let item_type = ShardItemType::from_le_bytes(item_type[0]).unwrap();
         assert!(item_type.is_raw());
-        let item_metadata_len = &to_vec[1..(U64_SIZE + 1)];
+        let item_metadata_len = cursor.consume(U64_SIZE).unwrap();
 
         let item_metadata_le_bytes_input: [u8; 8] = item_metadata_len.try_into().unwrap();
         let item_metadata_usize = usize::from_le_bytes(item_metadata_le_bytes_input);
-        assert_eq!(item_metadata_usize, 40);
+        assert_eq!(item_metadata_usize, 64);
 
-        let inner_metadata = &to_vec[9..49];
-        let item_len = &inner_metadata[0..8];
-        let max_size = &inner_metadata[8..16];
+        let inner_metadata = cursor.consume(item_metadata_usize).unwrap();
+        let mut metadata_cursor = Cursor::new(inner_metadata);
+        let current_shard_id = metadata_cursor.consume(UUID_BYTE_LEN as usize).unwrap();
+        let current_offset = metadata_cursor.consume(U64_SIZE).unwrap();
+        let item_len = metadata_cursor.consume(U64_SIZE).unwrap();
+        let max_size = metadata_cursor.consume(U64_SIZE).unwrap();
+        let moved_id_and_offset = metadata_cursor.consume(24).unwrap();
+
         let item_len_le_bytes: [u8; 8] = item_len.try_into().unwrap();
         let max_size_le_bytes: [u8; 8] = max_size.try_into().unwrap();
         assert_eq!(u64::from_le_bytes(item_len_le_bytes), 5);
         assert_eq!(u64::from_le_bytes(max_size_le_bytes), 20);
-        let uuid_and_offset = &inner_metadata[16..40];
-        assert_eq!(uuid_and_offset, &[0u8; 24]);
-        let item = &to_vec[49..69];
+        assert_eq!(moved_id_and_offset, &[0u8; 24]);
+        let item = &to_vec[73..93];
         assert_eq!(
             item,
             &[72, 101, 108, 108, 111, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
-        assert!(to_vec.get(70).is_none());
+        assert!(to_vec.get(94).is_none());
     }
 }

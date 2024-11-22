@@ -43,17 +43,19 @@ impl KvShard {
         &self,
         file: &mut File,
         i: usize,
-        first_element: &[u8],
-        second_element: &[u8],
+        mut first_element: ShardItem,
+        mut second_element: ShardItem,
     ) -> Result<(), std::io::Error> {
+        second_element.current_offset = Self::get_element_offset(i, self.value_size);
+        first_element.current_offset = Self::get_element_offset(i - 1, self.value_size);
         write_at(
             file,
-            second_element,
+            &second_element.to_vec(),
             Self::get_element_offset(i, self.value_size) as u64,
         )?;
         write_at(
             file,
-            first_element,
+            &first_element.to_vec(),
             Self::get_element_offset(i - 1, self.value_size) as u64,
         )?;
         Ok(())
@@ -144,7 +146,7 @@ impl Shard<KvShardConfig> for KvShard {
 
                 let prepare_data: Vec<Vec<u8>> = data
                     .iter()
-                    .map(|&row| ShardItem::new_complete(row, false).to_vec())
+                    .map(|&row| ShardItem::new_complete(row, self.id.clone(), 0, false).to_vec())
                     .collect();
                 let write_data: Vec<&[u8]> =
                     prepare_data.iter().map(|row| row.as_slice()).collect();

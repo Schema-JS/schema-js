@@ -13,6 +13,7 @@ pub struct Cursor<'a> {
     data: CursorData<'a>,
     pub position: usize,
     pub len: usize,
+    pub starting_pos: Option<usize>,
 }
 
 impl<'a> Cursor<'a> {
@@ -21,6 +22,7 @@ impl<'a> Cursor<'a> {
             data: CursorData::Raw(data),
             position: 0,
             len: data.len(),
+            starting_pos: None,
         }
     }
 
@@ -29,6 +31,7 @@ impl<'a> Cursor<'a> {
             data: CursorData::Mmap(data),
             position: 0,
             len: data.len(),
+            starting_pos: None,
         }
     }
 
@@ -37,7 +40,14 @@ impl<'a> Cursor<'a> {
             data: CursorData::MmapMut(data),
             position: 0,
             len: data.len(),
+            starting_pos: None,
         }
+    }
+
+    pub fn set_starting_pos(mut self, pos: usize) -> Self {
+        self.starting_pos = Some(pos);
+        self.position = pos;
+        self
     }
 
     pub fn new(data: &'a [u8]) -> Self {
@@ -67,7 +77,7 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn reset(&mut self) {
-        self.position = 0;
+        self.position = self.starting_pos.unwrap_or(0);
     }
 
     pub fn is_eof(&self) -> bool {

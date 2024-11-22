@@ -1,0 +1,269 @@
+use enum_as_inner::EnumAsInner;
+use parking_lot::RwLock;
+use schemajs_data::commit_log::collection::CommitLogCollection;
+use schemajs_data::commit_log::iterator::{CommitLogIterator, CommitLogIteratorItem};
+use schemajs_data::commit_log::operations::{CommitLogEntry, OperationData};
+use schemajs_data::commit_log::reconciliation_file::ReconciliationFile;
+use schemajs_data::shard::map_shard::MapShard;
+use schemajs_data::shard::shards::data_shard::config::DataShardConfig;
+use schemajs_data::shard::shards::data_shard::shard::DataShard;
+use schemajs_data::U64_SIZE;
+use serde::{Deserialize, Serialize};
+use std::fmt::{Debug, Formatter};
+use std::path::PathBuf;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use thiserror::Error;
+
+pub struct DataWithIndex {
+    pub data: Vec<u8>,
+    pub index: u64,
+}
+
+pub struct OnReconcileCb {
+    func: Option<Box<dyn Fn(Vec<DataWithIndex>) -> Result<(), ()> + Send + Sync + 'static>>,
+}
+
+impl Debug for OnReconcileCb {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Function pointer")
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, EnumAsInner)]
+pub enum TableCommitStatus {
+    Succeeded,
+    Partial(Vec<usize>),
+}
+
+#[derive(Debug, Error, Serialize, Deserialize, Clone)]
+pub enum TableCommitError {
+    #[error("I/O Error during table commit")]
+    IoError,
+    #[error("Reconciliation error")]
+    ReconcileError,
+}
+
+#[derive(Debug)]
+pub struct TableCommitLogCollection {
+    pub main_shard: Arc<RwLock<MapShard<DataShard, DataShardConfig>>>,
+    pub commit_log_collection: Arc<CommitLogCollection>,
+    on_reconcile: OnReconcileCb,
+    pub reconciliation_file: Arc<RwLock<ReconciliationFile>>,
+    min_bytes_master_merge: usize,
+}
+
+impl TableCommitLogCollection {
+    pub fn new(
+        target_shard: Arc<RwLock<MapShard<DataShard, DataShardConfig>>>,
+        folder: PathBuf,
+        prefix: &str,
+        max_logs: usize,
+        log_size: usize,
+        min_bytes_master_merge: usize,
+    ) -> Self {
+        Self {
+            reconciliation_file: Arc::new(ReconciliationFile::new(folder.join("reconcile.data"))),
+            main_shard: target_shard,
+            commit_log_collection: Arc::new(CommitLogCollection::new(
+                folder, prefix, max_logs, log_size,
+            )),
+            on_reconcile: OnReconcileCb { func: None },
+            min_bytes_master_merge,
+        }
+    }
+
+    pub fn log(&self, data: &[CommitLogEntry]) -> Result<TableCommitStatus, TableCommitError> {
+        let mut used_commit_logs = vec![];
+        let mut uncommitted_items = vec![];
+
+        for (index, item) in data.iter().enumerate() {
+            while self
+                .commit_log_collection
+                .waiting_for_reconciliation
+                .load(Ordering::Acquire)
+            {
+                // Optionally, add a short sleep to avoid high CPU usage
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+
+            let commit_log_i = self.commit_log_collection.write(item); // Todo: what if error?
+
+            match commit_log_i {
+                Ok(commit_log_i) => used_commit_logs.push(commit_log_i),
+                Err(_) => uncommitted_items.push(index),
+            };
+        }
+
+        for i in used_commit_logs {
+            let e = self.commit_log_collection.logs.read()[i].flush();
+            if e.is_err() {
+                return Err(TableCommitError::IoError);
+            }
+            // TODO: what if panics?
+        }
+
+        if uncommitted_items.is_empty() {
+            Ok(TableCommitStatus::Succeeded)
+        } else {
+            Ok(TableCommitStatus::Partial(uncommitted_items))
+        }
+    }
+
+    pub fn set_on_reconcile(
+        &mut self,
+        data: Box<dyn Fn(Vec<DataWithIndex>) -> Result<(), ()> + Send + Sync + 'static>,
+    ) {
+        self.on_reconcile = OnReconcileCb { func: Some(data) };
+    }
+
+    pub fn insert(&self, data: &[&[u8]]) -> Result<TableCommitStatus, TableCommitError> {
+        let entries: Vec<CommitLogEntry> = data
+            .iter()
+            .map(|&data| CommitLogEntry::insert(data))
+            .collect();
+        self.log(&entries)
+    }
+
+    pub fn delete(&self, data: &[u64]) -> Result<TableCommitStatus, TableCommitError> {
+        let entries: Vec<CommitLogEntry> = data
+            .iter()
+            .map(|&global| CommitLogEntry::delete(global))
+            .collect();
+        self.log(&entries)
+    }
+
+    pub fn reconcile(&self) -> Result<(), TableCommitError> {
+        let mut reconcile_file = self.reconciliation_file.write();
+        // If finished is marked as false
+        // When calling `reconcile`
+        // It's mostly because something went wrong, the server went down, some data wasn't flushed, etc.
+        // Finished should always be `true` at the time of calling this method.
+        let needs_recovery = !reconcile_file.finished;
+
+        let (last_entry_indx, last_log_indx) = if needs_recovery {
+            (
+                reconcile_file.last_reconciled_entry as i64,
+                reconcile_file.last_commit_log_index,
+            )
+        } else {
+            let _ = reconcile_file.start_reconciliation().unwrap();
+
+            (-1, 0)
+        };
+
+        let logs = self.commit_log_collection.logs.read();
+        let mut main_shard = self.main_shard.write();
+
+        let mut insert_queue = vec![];
+        let mut delete_queue = vec![];
+        let mut update_queue = vec![];
+
+        let mut bytes_in_queue = 0;
+
+        for (index, log) in logs.iter().enumerate() {
+            if index < last_log_indx {
+                continue;
+            }
+
+            reconcile_file.set_last_commit_log_index(index as u64);
+            let _ = reconcile_file
+                .flush()
+                .map_err(|_| TableCommitError::ReconcileError)?;
+
+            let mut commit_log_cursor = log.get_cursor();
+            for (log_index, log) in CommitLogIterator::new(&mut commit_log_cursor).enumerate() {
+                if last_entry_indx >= 0 && log_index <= last_entry_indx as usize {
+                    continue;
+                }
+
+                match log {
+                    CommitLogIteratorItem::Valid(entry) => match entry.data {
+                        OperationData::Insert { data } => {
+                            bytes_in_queue += data.len();
+                            insert_queue.push(data);
+                        }
+                        OperationData::Delete { global_indx } => {
+                            delete_queue.push(global_indx);
+                            bytes_in_queue += U64_SIZE;
+                        }
+                        OperationData::Update {
+                            new_data,
+                            global_indx,
+                        } => {
+                            bytes_in_queue += new_data.len() + U64_SIZE;
+                            update_queue.push((new_data, global_indx));
+                        }
+                        OperationData::Raw { .. } => {}
+                    },
+                    CommitLogIteratorItem::Broken => continue,
+                }
+
+                if bytes_in_queue >= self.min_bytes_master_merge {
+                    Self::merge_changes(
+                        &mut main_shard,
+                        &mut insert_queue,
+                        &mut delete_queue,
+                        &mut update_queue,
+                        &mut reconcile_file,
+                        log_index as u64,
+                    )?;
+                    bytes_in_queue = 0;
+                }
+            }
+        }
+
+        if bytes_in_queue > 0 {
+            Self::merge_changes(
+                &mut main_shard,
+                &mut insert_queue,
+                &mut delete_queue,
+                &mut update_queue,
+                &mut reconcile_file,
+                0,
+            )?;
+
+            reconcile_file.stop_reconciliation().unwrap();
+        }
+
+        Ok(())
+    }
+
+    fn merge_changes(
+        main_shard: &mut MapShard<DataShard, DataShardConfig>,
+        insert_queue: &mut Vec<Vec<u8>>,
+        delete_queue: &mut Vec<u64>,
+        update_queue: &mut Vec<(Vec<u8>, u64)>,
+        reconciliation_file: &mut ReconciliationFile,
+        log_index: u64,
+    ) -> Result<(), TableCommitError> {
+        // Inserts
+        {
+            let inserts: Vec<&[u8]> = insert_queue.iter().map(|v| v.as_slice()).collect();
+            main_shard.insert_rows(&inserts);
+            insert_queue.clear();
+        }
+
+        // Deletes
+        {
+            let deletes: Vec<u64> = delete_queue.iter().map(|e| *e).collect();
+            main_shard.delete_items(&deletes);
+            delete_queue.clear();
+        }
+
+        // Updates
+        {
+            let updates: Vec<(u64, &[u8])> =
+                update_queue.iter().map(|e| (e.1, e.0.as_slice())).collect();
+            main_shard.update_items(updates);
+            update_queue.clear();
+        }
+
+        reconciliation_file.set_last_reconciled_entry(log_index);
+        let _ = reconciliation_file
+            .flush()
+            .map_err(|_| TableCommitError::ReconcileError)?;
+
+        Ok(())
+    }
+}

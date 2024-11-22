@@ -9,8 +9,6 @@ use uuid::Uuid;
 pub mod item_type;
 pub mod map_shard;
 pub mod shards;
-pub mod temp_collection;
-pub mod temp_map_shard;
 
 pub trait ShardConfig: Clone {}
 

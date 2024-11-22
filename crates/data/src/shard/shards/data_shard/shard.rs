@@ -72,8 +72,8 @@ impl DataShard {
         }
     }
 
-    pub(crate) fn prepare_item_insert(&self, item: &[u8]) -> Vec<u8> {
-        ShardItem::new(item).to_vec()
+    pub(crate) fn prepare_item_insert(&self, item: &[u8], offset: usize) -> Vec<u8> {
+        ShardItem::new(item, self.id, offset).to_vec()
     }
 
     fn find_offsets_by_index(&self, indexes: &[u64]) -> Vec<(u64, u64)> {
@@ -154,19 +154,25 @@ impl Shard<DataShardConfig> for DataShard {
     fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
         let mut header_write = self.header.write();
         let op = self.data.write().operate(|file| {
+            // Calculate the current end of the file
+            let end_of_file = file
+                .seek(SeekFrom::End(0))
+                .expect("Failed to seek to end of file");
+
+            let mut offsets = end_of_file;
+
             let prepare_data: Vec<Vec<u8>> = data
                 .iter()
-                .map(|&row| self.prepare_item_insert(row))
+                .map(|&row| {
+                    let insert = self.prepare_item_insert(row, offsets as usize);
+                    offsets += insert.len() as u64;
+                    insert
+                })
                 .collect();
 
             let write_data: Vec<&[u8]> = prepare_data.iter().map(|row| row.as_slice()).collect();
 
             let write_data = flatten(write_data);
-
-            // Calculate the current end of the file
-            let end_of_file = file
-                .seek(SeekFrom::End(0))
-                .expect("Failed to seek to end of file");
 
             // Write the item to the file
             file.write_all(&write_data)
@@ -215,7 +221,7 @@ impl Shard<DataShardConfig> for DataShard {
                     let internal_pos = res.get_internal_pos().unwrap();
 
                     if res.shard_item_type.is_moved() {
-                        items_to_move.push((internal_pos, ShardItem::new(update_data), res))
+                        items_to_move.push((internal_pos, update_data.to_vec(), res))
                     } else {
                         items_to_update.push((internal_pos, res));
                     }
@@ -239,7 +245,7 @@ impl Shard<DataShardConfig> for DataShard {
             .write()
             .operate(|file| {
                 for (offset, new_item, mut original) in items_to_move {
-                    let insert_new_item = map_shard.insert_rows(&[new_item.get_used_data()]); // TODO: Insert from data item
+                    let insert_new_item = map_shard.insert_rows(&[&new_item]); // TODO: Insert from data item
                     let shard = {
                         let (shard, local_indx) = map_shard
                             .get_shard_by_global_item_index(insert_new_item)

@@ -1,6 +1,8 @@
+pub mod table_commit_log_collection;
 pub mod table_shard;
 
 use crate::errors::QueryError;
+use crate::managers::query_result::{InsertResult, QueryResult};
 use crate::managers::single::table_shard::TableShard;
 use crate::row::Row;
 use crate::search::search_manager::QuerySearchManager;
@@ -8,7 +10,6 @@ use chashmap::CHashMap;
 use schemajs_config::DatabaseConfig;
 use schemajs_data::fdm::FileDescriptorManager;
 use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
-use schemajs_data::shard::temp_map_shard::DataWithIndex;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_helpers::helper::HelperCall;
 use schemajs_primitives::column::types::DataValue;
@@ -18,6 +19,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
@@ -139,7 +141,7 @@ impl<T: Row> SingleQueryManager<T> {
         &self,
         data: Vec<(String, HashMap<String, DataValue>)>,
         master_insert: bool,
-    ) -> Result<Option<Uuid>, QueryError> {
+    ) -> Result<QueryResult, QueryError> {
         let mut rows: Vec<T> = data
             .into_iter()
             .map(|e| {
@@ -187,7 +189,7 @@ impl<T: Row> SingleQueryManager<T> {
     ///
     /// `SingleQueryManager` will require a folder to be created for `database-name` otherwise it will panic.
     /// For a reference on how this is plugged: crates/query/src/search/search_manager.rs#test_search_manager
-    pub fn insert(&self, row: T) -> Result<Option<Uuid>, QueryError> {
+    pub fn insert(&self, row: T) -> Result<QueryResult, QueryError> {
         self.raw_insert(&mut [row], false)
     }
 
@@ -195,7 +197,8 @@ impl<T: Row> SingleQueryManager<T> {
         &self,
         rows: &mut [T],
         master_insert: bool,
-    ) -> Result<Option<Uuid>, QueryError> {
+    ) -> Result<QueryResult, QueryError> {
+        let instant = Instant::now();
         let rows_len = rows.len();
         let mut table_inserts: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
         let mut id = None;
@@ -231,7 +234,21 @@ impl<T: Row> SingleQueryManager<T> {
             if let Some(table_shard) = self.tables.get(&table_name) {
                 let vec_of_slices: Vec<&[u8]> = rows.iter().map(|v| v.as_slice()).collect();
                 if !master_insert {
-                    table_shard.temps.insert(&vec_of_slices)?;
+                    table_shard
+                        .temps
+                        .insert(&vec_of_slices)
+                        .map(|e| {
+                            QueryResult::Insert(InsertResult {
+                                last_uuid: id,
+                                succeeded: e.is_succeeded(),
+                                failed_items: e
+                                    .as_partial()
+                                    .map(|e| e.clone())
+                                    .unwrap_or_else(|| vec![]),
+                                duration: instant.elapsed(),
+                            })
+                        })
+                        .map_err(|e| QueryError::from(e))?;
                 } else {
                     let mut data_lock = table_shard.data.write();
 
@@ -253,7 +270,12 @@ impl<T: Row> SingleQueryManager<T> {
             }
         }
 
-        Ok(id)
+        Ok(QueryResult::Insert(InsertResult {
+            last_uuid: id,
+            succeeded: true,
+            failed_items: vec![],
+            duration: instant.elapsed(),
+        }))
     }
 
     pub fn delete(&self, row_indexes: &[u64]) {}

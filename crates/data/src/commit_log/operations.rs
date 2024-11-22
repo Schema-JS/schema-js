@@ -7,20 +7,20 @@ use sha2::digest::typenum::op;
 use uuid::Uuid;
 
 #[derive(EnumAsInner, Debug, PartialEq)]
-pub enum OperationType {
+pub enum CommitLogOperationType {
     Insert,
     Delete,
     Update,
     Raw,
 }
 
-impl OperationType {
+impl CommitLogOperationType {
     pub fn get_le_identifier(&self) -> [u8; 1] {
         match self {
-            OperationType::Insert => [0u8],
-            OperationType::Delete => [1u8],
-            OperationType::Update => [2u8],
-            OperationType::Raw => [3u8],
+            CommitLogOperationType::Insert => [0u8],
+            CommitLogOperationType::Delete => [1u8],
+            CommitLogOperationType::Update => [2u8],
+            CommitLogOperationType::Raw => [3u8],
         }
     }
 
@@ -40,32 +40,22 @@ impl OperationType {
 
 #[derive(EnumAsInner, Debug, PartialEq)]
 pub enum OperationData {
-    Insert {
-        data: Vec<u8>,
-    },
-    Delete {
-        shard_id: Uuid,
-        global_indx: u64,
-        local_indx: u64,
-    },
-    Update {
-        new_data: Vec<u8>,
-    },
-    Raw {
-        data: Vec<u8>,
-    },
+    Insert { data: Vec<u8> },
+    Delete { global_indx: u64 },
+    Update { global_indx: u64, new_data: Vec<u8> },
+    Raw { data: Vec<u8> },
 }
 
 #[derive(Debug)]
 pub struct CommitLogEntry {
-    operation_type: OperationType,
+    operation_type: CommitLogOperationType,
     pub data: OperationData,
 }
 
 impl CommitLogEntry {
     pub fn raw(data: &[u8]) -> Self {
         Self {
-            operation_type: OperationType::Raw,
+            operation_type: CommitLogOperationType::Raw,
             data: OperationData::Raw {
                 data: data.to_vec(),
             },
@@ -74,29 +64,26 @@ impl CommitLogEntry {
 
     pub fn insert(data: &[u8]) -> Self {
         Self {
-            operation_type: OperationType::Insert,
+            operation_type: CommitLogOperationType::Insert,
             data: OperationData::Insert {
                 data: data.to_vec(),
             },
         }
     }
 
-    pub fn delete(shard_id: Uuid, global_indx: u64, local_indx: u64) -> Self {
+    pub fn delete(global_indx: u64) -> Self {
         Self {
-            operation_type: OperationType::Delete,
-            data: OperationData::Delete {
-                shard_id,
-                global_indx,
-                local_indx,
-            },
+            operation_type: CommitLogOperationType::Delete,
+            data: OperationData::Delete { global_indx },
         }
     }
 
-    pub fn update(data: &[u8]) -> Self {
+    pub fn update(data: &[u8], global_indx: u64) -> Self {
         Self {
-            operation_type: OperationType::Update,
+            operation_type: CommitLogOperationType::Update,
             data: OperationData::Update {
                 new_data: data.to_vec(),
+                global_indx,
             },
         }
     }
@@ -113,16 +100,14 @@ impl CommitLogEntry {
                 OperationData::Insert { data } => {
                     payload.extend_from_slice(data);
                 }
-                OperationData::Delete {
-                    global_indx,
-                    local_indx,
-                    shard_id,
-                } => {
-                    payload.extend_from_slice(&shard_id.to_bytes_le());
+                OperationData::Delete { global_indx } => {
                     payload.extend_from_slice(&global_indx.to_le_bytes());
-                    payload.extend_from_slice(&local_indx.to_le_bytes());
                 }
-                OperationData::Update { new_data } => {
+                OperationData::Update {
+                    new_data,
+                    global_indx,
+                } => {
+                    payload.extend_from_slice(&global_indx.to_le_bytes());
                     payload.extend_from_slice(new_data);
                 }
                 OperationData::Raw { data } => {
@@ -148,8 +133,8 @@ impl TryFrom<&[u8]> for CommitLogEntry {
         let item_type = cursor
             .consume(1)
             .map_err(|_| CommitLogError::BrokenRecord)?;
-        let item_type =
-            OperationType::from_bytes(item_type[0]).map_err(|_| CommitLogError::BrokenRecord)?;
+        let item_type = CommitLogOperationType::from_bytes(item_type[0])
+            .map_err(|_| CommitLogError::BrokenRecord)?;
 
         let payload_len = cursor
             .consume(U64_SIZE)
@@ -157,10 +142,10 @@ impl TryFrom<&[u8]> for CommitLogEntry {
         let item_payload_le_bytes_input: [u8; 8] = payload_len
             .try_into()
             .map_err(|_| CommitLogError::BrokenRecord)?;
-        let item_payload_usize = usize::from_le_bytes(item_payload_le_bytes_input);
+        let item_payload_usize = u64::from_le_bytes(item_payload_le_bytes_input);
 
         let payload = cursor
-            .consume(item_payload_usize)
+            .consume(item_payload_usize as usize)
             .map_err(|_| CommitLogError::BrokenRecord)?;
         let delimiter = cursor
             .consume(3)
@@ -172,34 +157,39 @@ impl TryFrom<&[u8]> for CommitLogEntry {
 
         let op_data = {
             match item_type {
-                OperationType::Insert => OperationData::Insert {
+                CommitLogOperationType::Insert => OperationData::Insert {
                     data: payload.to_vec(),
                 },
-                OperationType::Raw => OperationData::Raw {
+                CommitLogOperationType::Raw => OperationData::Raw {
                     data: payload.to_owned(),
                 },
-                OperationType::Delete => {
+                CommitLogOperationType::Delete => {
                     let mut delete_cursor = Cursor::new(&payload);
 
-                    let uuid = delete_cursor
-                        .consume(UUID_BYTE_LEN as usize)
-                        .map_err(|_| CommitLogError::BrokenRecord)?;
                     let global_indx = delete_cursor
-                        .consume(U64_SIZE)
-                        .map_err(|_| CommitLogError::BrokenRecord)?;
-                    let local_indx = delete_cursor
                         .consume(U64_SIZE)
                         .map_err(|_| CommitLogError::BrokenRecord)?;
 
                     OperationData::Delete {
-                        shard_id: Uuid::from_bytes_le(uuid.to_vec().try_into().unwrap()),
                         global_indx: u64::from_le_bytes(global_indx.to_vec().try_into().unwrap()),
-                        local_indx: u64::from_le_bytes(local_indx.to_vec().try_into().unwrap()),
                     }
                 }
-                OperationType::Update => OperationData::Update {
-                    new_data: payload.to_vec(),
-                },
+                CommitLogOperationType::Update => {
+                    let mut update_cursor = Cursor::new(&payload);
+
+                    let global_indx = update_cursor
+                        .consume(U64_SIZE)
+                        .map_err(|_| CommitLogError::BrokenRecord)?;
+
+                    let data = update_cursor
+                        .consume(payload.len() - U64_SIZE)
+                        .map_err(|_| CommitLogError::BrokenRecord)?;
+
+                    OperationData::Update {
+                        global_indx: u64::from_le_bytes(global_indx.to_vec().try_into().unwrap()),
+                        new_data: data.to_vec(),
+                    }
+                }
             }
         };
 
@@ -234,27 +224,26 @@ mod test {
 
     #[tokio::test]
     pub async fn test_update() {
-        let operation_item = CommitLogEntry::insert(b"Hello World");
+        let operation_item = CommitLogEntry::update(b"Hello World", 10);
+        assert_eq!(operation_item.data.as_update().unwrap().0, &10);
         let a = operation_item.to_vec();
         let from_a = CommitLogEntry::try_from(a.clone()).unwrap();
         assert_eq!(a, from_a.to_vec());
-        assert_eq!(from_a.data.as_insert().unwrap(), b"Hello World");
+        let updt = from_a.data.as_update().unwrap();
+        assert_eq!(updt.1, b"Hello World");
+        assert_eq!(updt.0, &10);
     }
 
     #[tokio::test]
     pub async fn test_delete() {
         let shard_id = Uuid::new_v4();
-        let operation_item = CommitLogEntry::delete(shard_id.clone(), 0, 1);
+        let operation_item = CommitLogEntry::delete(1);
         let delete_item = operation_item.data.as_delete().unwrap();
-        assert_eq!(delete_item.0.to_string(), shard_id.to_string());
-        assert_eq!(delete_item.1, &0);
-        assert_eq!(delete_item.2, &1);
+        assert_eq!(delete_item, &1);
         let a = operation_item.to_vec();
         let from_a = CommitLogEntry::try_from(a.clone()).unwrap();
         let from_a = from_a.data.as_delete().unwrap();
-        assert_eq!(from_a.0.to_string(), shard_id.to_string());
-        assert_eq!(from_a.1, &0);
-        assert_eq!(from_a.2, &1);
+        assert_eq!(from_a, &1);
     }
 
     #[tokio::test]

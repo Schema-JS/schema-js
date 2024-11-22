@@ -12,7 +12,7 @@ pub const RECONCILE_DB_TASK: LazyCell<Task> = LazyCell::new(|| {
                 let query_manager = &db.query_manager;
                 for table in query_manager.table_names.read().unwrap().iter() {
                     let table = query_manager.tables.get(table).unwrap();
-                    table.temps.reconcile_all();
+                    let _ = table.temps.reconcile();
                 }
             }
             Ok(())

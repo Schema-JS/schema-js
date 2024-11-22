@@ -14,7 +14,9 @@ use std::cmp::Ordering;
 use std::io::{Seek, Write};
 use std::marker::PhantomData;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct IndexShard<K: IndexKey, V: IndexValue> {
@@ -214,15 +216,17 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
 
     fn keep_binary_order(&self) {
         let mut i = { self.data.read().current_master_shard.get_last_index() };
+        let shard_id = self.data.read().current_master_shard.get_id();
+        let shard_uuid = Uuid::from_str(&shard_id).unwrap();
 
         while i > 0 {
             let (curr_index, _, curr_original_el) = self.get_kv(i as usize, false).unwrap();
             let (prev_index, _, prev_original_el) = self.get_kv(i as usize - 1, false).unwrap();
 
             let curr_original_el =
-                ShardItem::new_complete(curr_original_el.as_slice(), false).to_vec();
+                ShardItem::new_complete(curr_original_el.as_slice(), shard_uuid.clone(), 0, false);
             let prev_original_el =
-                ShardItem::new_complete(prev_original_el.as_slice(), false).to_vec();
+                ShardItem::new_complete(prev_original_el.as_slice(), shard_uuid.clone(), 0, false);
 
             match curr_index.cmp(&prev_index) {
                 Ordering::Less => {
@@ -232,12 +236,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
                         .operate(|file| {
                             writer
                                 .current_master_shard
-                                .swap_elements(
-                                    file,
-                                    i as usize,
-                                    &curr_original_el,
-                                    &prev_original_el,
-                                )
+                                .swap_elements(file, i as usize, curr_original_el, prev_original_el)
                                 .unwrap();
                             i -= 1;
                             Ok(())

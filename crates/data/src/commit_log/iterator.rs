@@ -1,5 +1,5 @@
 use crate::commit_log::error::CommitLogError;
-use crate::commit_log::operations::{CommitLogEntry, OperationType};
+use crate::commit_log::operations::{CommitLogEntry, CommitLogOperationType};
 use crate::cursor::Cursor;
 use enum_as_inner::EnumAsInner;
 
@@ -21,8 +21,8 @@ impl<'a> CommitLogIterator<'a> {
             .cursor
             .consume(1)
             .map_err(|_| CommitLogError::BrokenRecord)?;
-        let _op_type =
-            OperationType::from_bytes(entry_type[0]).map_err(|_| CommitLogError::BrokenRecord)?;
+        let _op_type = CommitLogOperationType::from_bytes(entry_type[0])
+            .map_err(|_| CommitLogError::BrokenRecord)?;
         let item_size = self
             .cursor
             .consume(8)

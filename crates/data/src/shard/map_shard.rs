@@ -285,6 +285,22 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
         self.get_element_from_specific(&shard, local_index)
     }
 
+    pub fn get_last_index(&self) -> usize {
+        let last_master_index = self.current_master_shard.get_last_index() as usize;
+        match self.breaking_point() {
+            None => last_master_index,
+            Some(breaking_point) => {
+                let past_count = self.all_shards.len() - 1;
+                let total_indexes = past_count * (breaking_point as usize);
+                total_indexes + last_master_index
+            }
+        }
+    }
+
+    pub fn get_last_global_element(&self) -> Result<ShardItem, ShardErrors> {
+        self.get_element(self.get_last_index())
+    }
+
     pub fn get_shard_by_global_item_index(
         &self,
         index: usize,
@@ -456,6 +472,12 @@ mod test {
         ]);
 
         context.get_element(3).unwrap();
+
+        // test last element
+        assert_eq!(
+            context.get_last_global_element().unwrap().get_used_data(),
+            b"4"
+        );
     }
 
     #[tokio::test]

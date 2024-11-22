@@ -1,5 +1,7 @@
+use crate::managers::single::table_commit_log_collection::TableCommitError;
 use crate::RowSerializationError;
 use enum_as_inner::EnumAsInner;
+use schemajs_data::commit_log::error::CommitLogError;
 use schemajs_data::errors::ShardErrors;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -32,4 +34,7 @@ pub enum QueryError {
 
     #[error("Row could not be serialized")]
     SerializationError(#[from] RowSerializationError),
+
+    #[error("Invalid Commit Log Operation")]
+    CommitLogError(#[from] TableCommitError),
 }

@@ -2,6 +2,7 @@ use crate::engine::SchemeJsEngine;
 use deno_core::{op2, serde_json, OpState};
 use parking_lot::RwLock;
 use schemajs_query::errors::QueryError;
+use schemajs_query::managers::query_result::QueryResult;
 use schemajs_query::row::Row;
 use schemajs_query::row_json::{RowData, RowJson};
 use std::cell::RefCell;
@@ -16,7 +17,7 @@ pub async fn op_engine_insert_row(
     #[string] db_name: String,
     #[string] table_name: String,
     #[serde] mut row: serde_json::Value,
-) -> Result<Option<Uuid>, QueryError> {
+) -> Result<QueryResult, QueryError> {
     let mut mut_state = state.borrow_mut();
     let state = mut_state
         .borrow_mut::<Arc<RwLock<SchemeJsEngine>>>()
