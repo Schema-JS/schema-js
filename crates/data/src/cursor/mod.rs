@@ -78,13 +78,7 @@ impl<'a> Cursor<'a> {
 
         let range = self.position..(self.position + size);
 
-        let data = match self.data {
-            CursorData::Raw(data) => &data[range],
-            CursorData::Mmap(data) => &data[range],
-            CursorData::MmapMut(data) => &data[range],
-        };
-
-        Ok(data)
+        Ok(self.get_range(range))
     }
 
     pub fn consume(&mut self, size: usize) -> Result<&'a [u8], CursorError> {

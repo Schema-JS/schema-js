@@ -178,9 +178,8 @@ impl TableCommitLogCollection {
                 .map_err(|_| TableCommitError::ReconcileError)?;
 
             let mut commit_log_cursor = log.get_cursor();
-            println!("Commit log cursor len {}", commit_log_cursor.len);
+
             for (log_index, log) in CommitLogIterator::new(&mut commit_log_cursor).enumerate() {
-                println!("Commit log entry #{}.{} : {:?}", index, log_index, log);
                 if last_entry_indx >= 0 && log_index <= last_entry_indx as usize {
                     continue;
                 }
@@ -423,9 +422,18 @@ mod tests {
             let reconciliation_file = collection.reconciliation_file.read();
             println!("{:?}", reconciliation_file.mmap.to_vec());
             assert_eq!(reconciliation_file.used, true);
-            assert_eq!(reconciliation_file.last_global_index, 35);
+            assert_eq!(reconciliation_file.last_global_index, 34);
             assert_eq!(reconciliation_file.last_commit_log_index, 1);
-            assert_eq!(reconciliation_file.last_reconciled_entry, 1);
+            assert_eq!(reconciliation_file.last_reconciled_entry, 0);
+        }
+
+        {
+            let shard = shard.read();
+
+            let item_34 = shard.get_element(34).unwrap();
+            let bytes = item_34.get_used_data();
+            assert_eq!(bytes, b"1");
+            assert_eq!(shard.get_last_index(), 34);
         }
     }
 }
