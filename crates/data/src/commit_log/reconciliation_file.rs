@@ -10,7 +10,9 @@ use std::path::Path;
 pub struct ReconciliationFile {
     pub last_commit_log_index: usize,
     pub last_reconciled_entry: usize,
+    pub last_global_index: usize,
     pub finished: bool,
+    pub used: bool,
     pub mmap: MmapMut,
 }
 
@@ -23,8 +25,8 @@ impl ReconciliationFile {
             .open(log_file_path)
             .unwrap();
 
-        // last_commit_log_index + last_reconciled_entry + finished
-        let len = U64_SIZE + U64_SIZE + 1;
+        // last_commit_log_index + last_reconciled_entry + last_global_index + finished + new
+        let len = U64_SIZE + U64_SIZE + U64_SIZE + 1 + 1;
 
         file.set_len(len as u64).unwrap();
 
@@ -34,7 +36,9 @@ impl ReconciliationFile {
         let mut cursor = Cursor::mmap_mut(&mmap);
         let last_commit_log_index_bytes = cursor.consume(U64_SIZE).unwrap();
         let last_reconciled_entry_bytes = cursor.consume(U64_SIZE).unwrap();
+        let last_global_index_bytes = cursor.consume(U64_SIZE).unwrap();
         let finished = cursor.consume(1).unwrap();
+        let used = cursor.consume(1).unwrap();
 
         RwLock::new(Self {
             last_commit_log_index: u64::from_le_bytes(
@@ -43,23 +47,47 @@ impl ReconciliationFile {
             last_reconciled_entry: u64::from_le_bytes(
                 last_reconciled_entry_bytes.try_into().unwrap(),
             ) as usize,
+            last_global_index: u64::from_le_bytes(last_global_index_bytes.try_into().unwrap())
+                as usize,
             finished: finished[0] == 1u8,
+            used: used[0] == 1u8,
             mmap,
         })
     }
 
-    fn reconcile(&mut self, finished: bool) -> std::io::Result<()> {
+    pub fn set_last_global_index(
+        &mut self,
+        last_global_index: usize,
+        flush: bool,
+    ) -> std::io::Result<()> {
+        self.last_global_index = last_global_index;
+        self.mmap[16..24].copy_from_slice((last_global_index as u64).to_le_bytes().as_slice());
+        if flush {
+            self.mmap.flush()
+        } else {
+            Ok(())
+        }
+    }
+
+    fn reconcile(&mut self, finished: bool, last_global_index: usize) -> std::io::Result<()> {
+        self.set_last_global_index(last_global_index, false)?;
         self.finished = finished;
-        self.mmap[16] = if finished { 1u8 } else { 0u8 };
+        self.mmap[24] = if finished { 1u8 } else { 0u8 };
+
+        if !self.used {
+            self.used = true;
+            self.mmap[25] = 1u8;
+        }
+
         self.mmap.flush()
     }
 
-    pub fn start_reconciliation(&mut self) -> std::io::Result<()> {
-        self.reconcile(false)
+    pub fn start_reconciliation(&mut self, last_global_index: usize) -> std::io::Result<()> {
+        self.reconcile(false, last_global_index)
     }
 
-    pub fn stop_reconciliation(&mut self) -> std::io::Result<()> {
-        self.reconcile(true)
+    pub fn stop_reconciliation(&mut self, last_global_index: usize) -> std::io::Result<()> {
+        self.reconcile(true, last_global_index)
     }
 
     pub fn set_last_commit_log_index(&mut self, index: u64) {
@@ -94,6 +122,7 @@ mod reconciliation_file {
             let mut writer = reconcile_file.write();
             assert_eq!(writer.last_commit_log_index, 0);
             assert_eq!(writer.last_reconciled_entry, 0);
+            assert!(!writer.used);
             writer.set_last_commit_log_index(25);
             writer.set_last_reconciled_entry(130);
             writer.flush().unwrap();
@@ -121,8 +150,12 @@ mod reconciliation_file {
         {
             let mut writer = reconcile_file.write();
             assert_eq!(writer.finished, false);
-            writer.start_reconciliation().unwrap();
+            assert_eq!(writer.last_global_index, 0);
+            assert!(!writer.used);
+            writer.start_reconciliation(7).unwrap();
+            assert!(writer.used);
             assert_eq!(writer.finished, false);
+            assert_eq!(writer.last_global_index, 7);
         }
 
         {
@@ -133,8 +166,12 @@ mod reconciliation_file {
             let reconcile_file = ReconciliationFile::new(fake_partial_folder_path);
             let mut write = reconcile_file.write();
             assert_eq!(write.finished, false);
-            write.stop_reconciliation().unwrap();
+            assert_eq!(write.last_global_index, 7);
+            assert!(write.used);
+            write.stop_reconciliation(10).unwrap();
+            assert!(write.used);
             assert_eq!(write.finished, true);
+            assert_eq!(write.last_global_index, 10);
         }
 
         {
@@ -145,6 +182,8 @@ mod reconciliation_file {
             let reconcile_file = ReconciliationFile::new(fake_partial_folder_path);
             let mut read = reconcile_file.read();
             assert_eq!(read.finished, true);
+            assert_eq!(read.last_global_index, 10);
+            assert!(read.used);
         }
     }
 }

@@ -1,11 +1,13 @@
 use crate::errors::ShardErrors;
 use crate::fdm::FileDescriptorManager;
+use crate::shard::insert_item::InsertItem;
 use crate::shard::item_type::ShardItem;
 use crate::shard::map_shard::MapShard;
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
+pub mod insert_item;
 pub mod item_type;
 pub mod map_shard;
 pub mod shards;
@@ -91,7 +93,7 @@ pub trait Shard<Opts: ShardConfig> {
 
     fn available_space(&self) -> AvailableSpace;
 
-    fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors>;
+    fn insert_item(&self, data: &[InsertItem]) -> Result<u64, ShardErrors>;
 
     fn update_items(
         &self,

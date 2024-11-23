@@ -1,6 +1,7 @@
 use crate::data_handler::DataHandler;
 use crate::errors::ShardErrors;
 use crate::fdm::FileDescriptorManager;
+use crate::shard::insert_item::InsertItem;
 use crate::shard::item_type::{ShardItem, ShardItemType};
 use crate::shard::map_shard::MapShard;
 use crate::shard::shards::data_shard::config::DataShardConfig;
@@ -72,8 +73,8 @@ impl DataShard {
         }
     }
 
-    pub(crate) fn prepare_item_insert(&self, item: &[u8], offset: usize) -> Vec<u8> {
-        ShardItem::new(item, self.id, offset).to_vec()
+    pub(crate) fn prepare_item_insert(&self, item: &[u8], item_id: Uuid, offset: usize) -> Vec<u8> {
+        ShardItem::new(item, item_id, self.id, offset).to_vec()
     }
 
     fn find_offsets_by_index(&self, indexes: &[u64]) -> Vec<(u64, u64)> {
@@ -151,7 +152,7 @@ impl Shard<DataShardConfig> for DataShard {
         AvailableSpace::Fixed(header.available_space())
     }
 
-    fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
+    fn insert_item(&self, data: &[InsertItem]) -> Result<u64, ShardErrors> {
         let mut header_write = self.header.write();
         let op = self.data.write().operate(|file| {
             // Calculate the current end of the file
@@ -163,8 +164,9 @@ impl Shard<DataShardConfig> for DataShard {
 
             let prepare_data: Vec<Vec<u8>> = data
                 .iter()
-                .map(|&row| {
-                    let insert = self.prepare_item_insert(row, offsets as usize);
+                .map(|row| {
+                    let insert =
+                        self.prepare_item_insert(row.data, row.uuid.clone(), offsets as usize);
                     offsets += insert.len() as u64;
                     insert
                 })
@@ -216,6 +218,11 @@ impl Shard<DataShardConfig> for DataShard {
             let item = self.read_item_from_index(index as usize);
             match item {
                 Ok(mut res) => {
+                    // It already was updated
+                    if res.shard_item_type.is_moved() {
+                        continue;
+                    }
+
                     res.update(update_data);
 
                     let internal_pos = res.get_internal_pos().unwrap();
@@ -245,7 +252,8 @@ impl Shard<DataShardConfig> for DataShard {
             .write()
             .operate(|file| {
                 for (offset, new_item, mut original) in items_to_move {
-                    let insert_new_item = map_shard.insert_rows(&[&new_item]); // TODO: Insert from data item
+                    let insert_new_item = map_shard
+                        .insert_rows(&[InsertItem::new(&new_item, original.current_item_id)]); // TODO: Insert from data item
                     let shard = {
                         let (shard, local_indx) = map_shard
                             .get_shard_by_global_item_index(insert_new_item)
@@ -300,6 +308,7 @@ impl Shard<DataShardConfig> for DataShard {
 mod test {
     use crate::errors::ShardErrors;
     use crate::fdm::FileDescriptorManager;
+    use crate::shard::insert_item::InsertItem;
     use crate::shard::item_type::{ShardItem, ShardItemType};
     use crate::shard::shards::data_shard::config::DataShardConfig;
     use crate::shard::shards::data_shard::shard::DataShard;
@@ -347,7 +356,10 @@ mod test {
             "String",
         ];
 
-        let collect_into_slices: Vec<&[u8]> = strs.iter().map(|i| i.as_bytes()).collect();
+        let collect_into_slices: Vec<InsertItem> = strs
+            .iter()
+            .map(|i| InsertItem::new(i.as_bytes(), Uuid::new_v4()))
+            .collect();
         data_shard.insert_item(&collect_into_slices).unwrap();
 
         /*
@@ -367,7 +379,7 @@ mod test {
         let item = data_shard.read_item_from_index(5).unwrap();
         assert_eq!(item.get_used_data(), "1".as_bytes().to_vec());
 
-        let item = data_shard.insert_item(&[&vec![1, 2, 3]]);
+        let item = data_shard.insert_item(&[InsertItem::new(&vec![1, 2, 3], Uuid::new_v4())]);
         assert!(item.is_err());
         assert!(item.err().unwrap().is_out_of_positions());
 
@@ -395,7 +407,10 @@ mod test {
 
         let strs = ["A", "B", "C", "D"];
 
-        let collect_into_slices: Vec<&[u8]> = strs.iter().map(|i| i.as_bytes()).collect();
+        let collect_into_slices: Vec<InsertItem> = strs
+            .iter()
+            .map(|i| InsertItem::new(i.as_bytes(), Uuid::new_v4()))
+            .collect();
         data_shard.insert_item(&collect_into_slices).unwrap();
 
         let item1 = data_shard.read_item_from_index(0).unwrap();
@@ -448,7 +463,7 @@ mod test {
 
         for data in strs.into_iter() {
             data_shard
-                .insert_item(&[&data.as_bytes().to_vec()])
+                .insert_item(&[InsertItem::new(&data.as_bytes().to_vec(), Uuid::new_v4())])
                 .unwrap();
         }
 
@@ -486,7 +501,7 @@ mod test {
             ref_shard
                 .write()
                 .unwrap()
-                .insert_item(&[&b"Hello World".to_vec()])
+                .insert_item(&[InsertItem::new(b"Hello World", Uuid::new_v4())])
                 .unwrap();
         });
 
@@ -495,7 +510,7 @@ mod test {
             ref_shard
                 .write()
                 .unwrap()
-                .insert_item(&[&b"Cats are beautiful".to_vec()])
+                .insert_item(&[InsertItem::new(b"Cats are beautiful", Uuid::new_v4())])
                 .unwrap();
         });
 
@@ -529,7 +544,7 @@ mod test {
             ref_shard
                 .write()
                 .unwrap()
-                .insert_item(&[&b"Hello World".to_vec()])
+                .insert_item(&[InsertItem::new(b"Hello World", Uuid::new_v4())])
                 .unwrap();
         });
         let a = shard.read().unwrap().read_item_from_index(0);

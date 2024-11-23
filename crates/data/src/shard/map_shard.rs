@@ -1,11 +1,13 @@
 use crate::errors::ShardErrors;
 use crate::fdm::FileDescriptorManager;
+use crate::shard::insert_item::InsertItem;
 use crate::shard::item_type::ShardItem;
 use crate::shard::{AvailableSpace, Shard, ShardConfig};
 use crate::utils::fs::list_files_with_prefix;
 use indexmap::IndexMap;
 use parking_lot::RwLock;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -115,7 +117,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
         Some((number, uuid, path))
     }
 
-    pub fn insert_rows(&mut self, data: &[&[u8]]) -> usize {
+    pub fn insert_rows(&mut self, data: &[InsertItem]) -> usize {
         self.raw_insert_rows(data, false)
     }
 
@@ -196,7 +198,7 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
         self.all_shards = shard_reversed;
     }
 
-    pub fn raw_insert_rows(&mut self, data: &[&[u8]], create_new_shard: bool) -> usize {
+    pub fn raw_insert_rows(&mut self, data: &[InsertItem], create_new_shard: bool) -> usize {
         if create_new_shard {
             let (shard_number, _, _) =
                 Self::extract_shard_signature(self.current_master_shard.get_path().clone())
@@ -286,7 +288,13 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
     }
 
     pub fn get_last_index(&self) -> usize {
-        let last_master_index = self.current_master_shard.get_last_index() as usize;
+        let last_master_index = self.current_master_shard.get_last_index();
+        let last_master_index = if last_master_index < 0 {
+            0usize
+        } else {
+            last_master_index as usize
+        };
+
         match self.breaking_point() {
             None => last_master_index,
             Some(breaking_point) => {
@@ -325,11 +333,26 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
             }
         }
     }
+
+    pub fn get_shard_item_ids_range(&self, range: Range<usize>) -> Vec<Uuid> {
+        // TODO: Refactor references, get_shard_by_global_item_index clones the reference, this logic is exhausting.
+        let mut ids = vec![];
+        for index in range {
+            if let Ok(el) = self.get_element(index) {
+                if el.shard_item_type.is_raw() {
+                    ids.push(el.current_item_id)
+                }
+            }
+        }
+
+        ids
+    }
 }
 
 #[cfg(test)]
 mod test {
     use crate::fdm::FileDescriptorManager;
+    use crate::shard::insert_item::InsertItem;
     use crate::shard::map_shard::MapShard;
     use crate::shard::shards::data_shard::config::DataShardConfig;
     use crate::shard::shards::data_shard::shard::DataShard;
@@ -411,12 +434,16 @@ mod test {
 
         let ref_map1 = arc.clone();
         let thread1 = std::thread::spawn(move || {
-            ref_map1.write().insert_rows(&[&b"1".to_vec()]);
+            ref_map1
+                .write()
+                .insert_rows(&[InsertItem::new(b"1", Uuid::new_v4())]);
         });
 
         let ref_map1 = arc.clone();
         let thread2 = std::thread::spawn(move || {
-            ref_map1.write().insert_rows(&[&b"2".to_vec()]);
+            ref_map1
+                .write()
+                .insert_rows(&[InsertItem::new(b"2", Uuid::new_v4())]);
         });
 
         thread1.join().unwrap();
@@ -465,10 +492,10 @@ mod test {
         );
 
         context.insert_rows(&[
-            &b"1".to_vec(),
-            &b"2".to_vec(),
-            &b"3".to_vec(),
-            &b"4".to_vec(),
+            InsertItem::new(b"1", Uuid::new_v4()),
+            InsertItem::new(b"2", Uuid::new_v4()),
+            InsertItem::new(b"3", Uuid::new_v4()),
+            InsertItem::new(b"4", Uuid::new_v4()),
         ]);
 
         context.get_element(3).unwrap();
@@ -498,10 +525,10 @@ mod test {
         );
 
         context.insert_rows(&[
-            &b"1".to_vec(),
-            &b"2".to_vec(),
-            &b"3".to_vec(),
-            &b"4".to_vec(),
+            InsertItem::new(b"1", Uuid::new_v4()),
+            InsertItem::new(b"2", Uuid::new_v4()),
+            InsertItem::new(b"3", Uuid::new_v4()),
+            InsertItem::new(b"4", Uuid::new_v4()),
         ]);
 
         let a = context.get_element(2).unwrap();
@@ -538,7 +565,7 @@ mod test {
             Arc::new(FileDescriptorManager::new(2500)),
         );
 
-        context.insert_rows(&[&b"1".to_vec()]);
+        context.insert_rows(&[InsertItem::new(b"1", Uuid::new_v4())]);
 
         let i1 = context.get_element(0).unwrap();
         assert_eq!(i1.get_used_data(), b"1");

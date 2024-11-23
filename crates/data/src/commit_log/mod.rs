@@ -62,6 +62,10 @@ impl CommitLog {
         }
     }
 
+    pub fn curr_offset(&self) -> usize {
+        self.write_offset.load(Ordering::Relaxed)
+    }
+
     fn reserve_space(&self, size: usize) -> Option<usize> {
         // Atomically reserve space
         let offset = self.write_offset.fetch_add(size, Ordering::SeqCst);

@@ -1,3 +1,5 @@
+extern crate core;
+
 pub mod commit_log;
 pub mod data_handler;
 pub mod errors;

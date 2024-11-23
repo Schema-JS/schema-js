@@ -6,6 +6,8 @@ use thiserror::Error;
 pub enum CommitLogError {
     #[error("Broken Record")]
     BrokenRecord,
+    #[error("Unkown Start Delimiter")]
+    UnknownStartDelimiter,
     #[error("Out of Memory")]
     OutOfMemory,
     #[error("Can't write in the current range")]
@@ -18,4 +20,6 @@ pub enum CommitLogError {
     LogLocked,
     #[error("No more locks available in collection")]
     MaxLogsReached,
+    #[error("Broken Record Known Valid Point (KVP)")]
+    BrokenRecordKvp(usize),
 }

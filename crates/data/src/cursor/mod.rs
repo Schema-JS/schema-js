@@ -1,17 +1,21 @@
 use crate::cursor::error::CursorError;
 use memmap2::{Mmap, MmapMut};
+use std::ops::Range;
 
 mod error;
 
+#[derive(Debug)]
 pub enum CursorData<'a> {
     Raw(&'a [u8]),
     Mmap(&'a Mmap),
     MmapMut(&'a MmapMut),
 }
 
+#[derive(Debug)]
 pub struct Cursor<'a> {
     data: CursorData<'a>,
     pub position: usize,
+    pub last_consumed_size: usize,
     pub len: usize,
     pub starting_pos: Option<usize>,
 }
@@ -23,6 +27,7 @@ impl<'a> Cursor<'a> {
             position: 0,
             len: data.len(),
             starting_pos: None,
+            last_consumed_size: 0,
         }
     }
 
@@ -32,6 +37,7 @@ impl<'a> Cursor<'a> {
             position: 0,
             len: data.len(),
             starting_pos: None,
+            last_consumed_size: 0,
         }
     }
 
@@ -41,6 +47,7 @@ impl<'a> Cursor<'a> {
             position: 0,
             len: data.len(),
             starting_pos: None,
+            last_consumed_size: 0,
         }
     }
 
@@ -54,7 +61,17 @@ impl<'a> Cursor<'a> {
         Self::raw(data)
     }
 
-    pub fn consume(&mut self, size: usize) -> Result<&'a [u8], CursorError> {
+    pub fn get_range(&self, range: Range<usize>) -> &'a [u8] {
+        let data = match self.data {
+            CursorData::Raw(data) => &data[range],
+            CursorData::Mmap(data) => &data[range],
+            CursorData::MmapMut(data) => &data[range],
+        };
+
+        data
+    }
+
+    pub fn peek(&self, size: usize) -> Result<&'a [u8], CursorError> {
         if self.position + size > self.len {
             return Err(CursorError::InvalidRange);
         }
@@ -67,7 +84,13 @@ impl<'a> Cursor<'a> {
             CursorData::MmapMut(data) => &data[range],
         };
 
+        Ok(data)
+    }
+
+    pub fn consume(&mut self, size: usize) -> Result<&'a [u8], CursorError> {
+        let data = self.peek(size)?;
         self.position += size;
+        self.last_consumed_size = size;
 
         Ok(data)
     }
@@ -76,7 +99,16 @@ impl<'a> Cursor<'a> {
         self.position = self.position - steps;
     }
 
+    pub fn forward(&mut self, steps: usize) {
+        self.position = self.position + steps;
+    }
+
+    pub fn move_to(&mut self, pos: usize) {
+        self.position = pos;
+    }
+
     pub fn reset(&mut self) {
+        self.last_consumed_size = 0;
         self.position = self.starting_pos.unwrap_or(0);
     }
 

@@ -9,6 +9,7 @@ use crate::search::search_manager::QuerySearchManager;
 use chashmap::CHashMap;
 use schemajs_config::DatabaseConfig;
 use schemajs_data::fdm::FileDescriptorManager;
+use schemajs_data::shard::insert_item::InsertItem;
 use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_helpers::helper::HelperCall;
@@ -253,7 +254,8 @@ impl<T: Row> SingleQueryManager<T> {
                     let mut data_lock = table_shard.data.write();
 
                     for row in vec_of_slices {
-                        let pointer = data_lock.insert_rows(&[row]);
+                        let pointer =
+                            data_lock.insert_rows(&[InsertItem::new(row, Uuid::new_v4())]);
 
                         TableShard::<T>::insert_indexes(
                             table_shard.table.clone(),

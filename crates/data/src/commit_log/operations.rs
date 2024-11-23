@@ -6,6 +6,9 @@ use enum_as_inner::EnumAsInner;
 use sha2::digest::typenum::op;
 use uuid::Uuid;
 
+pub const START_DELIMITER: &[u8] = b"%SJS_LOG_START%";
+pub const END_DELIMITER: &[u8] = b"%SJS_LOG_END%";
+
 #[derive(EnumAsInner, Debug, PartialEq)]
 pub enum CommitLogOperationType {
     Insert,
@@ -49,6 +52,7 @@ pub enum OperationData {
 #[derive(Debug)]
 pub struct CommitLogEntry {
     operation_type: CommitLogOperationType,
+    pub id: Uuid,
     pub data: OperationData,
 }
 
@@ -59,6 +63,7 @@ impl CommitLogEntry {
             data: OperationData::Raw {
                 data: data.to_vec(),
             },
+            id: Uuid::new_v4(),
         }
     }
 
@@ -68,6 +73,7 @@ impl CommitLogEntry {
             data: OperationData::Insert {
                 data: data.to_vec(),
             },
+            id: Uuid::new_v4(),
         }
     }
 
@@ -75,6 +81,7 @@ impl CommitLogEntry {
         Self {
             operation_type: CommitLogOperationType::Delete,
             data: OperationData::Delete { global_indx },
+            id: Uuid::new_v4(),
         }
     }
 
@@ -85,6 +92,7 @@ impl CommitLogEntry {
                 new_data: data.to_vec(),
                 global_indx,
             },
+            id: Uuid::new_v4(),
         }
     }
 
@@ -92,7 +100,9 @@ impl CommitLogEntry {
         let item_type_bytes = self.operation_type.get_le_identifier();
         let mut operation_bytes: Vec<u8> = vec![];
 
+        operation_bytes.extend_from_slice(START_DELIMITER);
         operation_bytes.extend_from_slice(&item_type_bytes);
+        operation_bytes.extend_from_slice(&self.id.to_bytes_le().as_slice());
 
         let data = {
             let mut payload: Vec<u8> = vec![];
@@ -120,9 +130,38 @@ impl CommitLogEntry {
 
         operation_bytes.extend_from_slice(&data.len().to_le_bytes());
         operation_bytes.extend_from_slice(&data);
-        operation_bytes.extend_from_slice(b"/el"); // END log
+        operation_bytes.extend_from_slice(END_DELIMITER); // END log
 
         operation_bytes
+    }
+
+    pub fn validate_header(
+        cursor: &mut Cursor,
+    ) -> Result<(CommitLogOperationType, Uuid, u64), CommitLogError> {
+        let start_delimiter = cursor
+            .consume(START_DELIMITER.len())
+            .map_err(|_| CommitLogError::Eof)?;
+
+        if start_delimiter != START_DELIMITER {
+            return Err(CommitLogError::UnknownStartDelimiter);
+        }
+
+        let item_type = cursor.consume(1).map_err(|_| CommitLogError::Eof)?;
+        let item_type = CommitLogOperationType::from_bytes(item_type[0])
+            .map_err(|_| CommitLogError::BrokenRecord)?;
+
+        let uuid = cursor
+            .consume(UUID_BYTE_LEN as usize)
+            .map_err(|_| CommitLogError::Eof)?;
+        let uuid = Uuid::from_bytes_le(uuid.try_into().map_err(|_| CommitLogError::BrokenRecord)?);
+
+        let payload_len = cursor.consume(U64_SIZE).map_err(|_| CommitLogError::Eof)?;
+        let item_payload_le_bytes_input: [u8; 8] = payload_len
+            .try_into()
+            .map_err(|_| CommitLogError::BrokenRecord)?;
+        let item_payload_usize = u64::from_le_bytes(item_payload_le_bytes_input);
+
+        Ok((item_type, uuid, item_payload_usize))
     }
 }
 
@@ -130,29 +169,18 @@ impl TryFrom<&[u8]> for CommitLogEntry {
     type Error = CommitLogError;
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let mut cursor = Cursor::new(value);
-        let item_type = cursor
-            .consume(1)
-            .map_err(|_| CommitLogError::BrokenRecord)?;
-        let item_type = CommitLogOperationType::from_bytes(item_type[0])
-            .map_err(|_| CommitLogError::BrokenRecord)?;
 
-        let payload_len = cursor
-            .consume(U64_SIZE)
-            .map_err(|_| CommitLogError::BrokenRecord)?;
-        let item_payload_le_bytes_input: [u8; 8] = payload_len
-            .try_into()
-            .map_err(|_| CommitLogError::BrokenRecord)?;
-        let item_payload_usize = u64::from_le_bytes(item_payload_le_bytes_input);
+        let (item_type, uuid, item_payload_usize) = Self::validate_header(&mut cursor)?;
 
         let payload = cursor
             .consume(item_payload_usize as usize)
-            .map_err(|_| CommitLogError::BrokenRecord)?;
+            .map_err(|_| CommitLogError::BrokenRecordKvp(cursor.position))?;
         let delimiter = cursor
-            .consume(3)
-            .map_err(|_| CommitLogError::BrokenRecord)?;
+            .consume(END_DELIMITER.len())
+            .map_err(|_| CommitLogError::BrokenRecordKvp(cursor.position))?;
 
-        if delimiter != b"/el" {
-            return Err(CommitLogError::BrokenRecord);
+        if delimiter != END_DELIMITER {
+            return Err(CommitLogError::BrokenRecordKvp(cursor.position));
         }
 
         let op_data = {
@@ -168,7 +196,7 @@ impl TryFrom<&[u8]> for CommitLogEntry {
 
                     let global_indx = delete_cursor
                         .consume(U64_SIZE)
-                        .map_err(|_| CommitLogError::BrokenRecord)?;
+                        .map_err(|_| CommitLogError::BrokenRecordKvp(cursor.position))?;
 
                     OperationData::Delete {
                         global_indx: u64::from_le_bytes(global_indx.to_vec().try_into().unwrap()),
@@ -179,11 +207,11 @@ impl TryFrom<&[u8]> for CommitLogEntry {
 
                     let global_indx = update_cursor
                         .consume(U64_SIZE)
-                        .map_err(|_| CommitLogError::BrokenRecord)?;
+                        .map_err(|_| CommitLogError::BrokenRecordKvp(cursor.position))?;
 
                     let data = update_cursor
                         .consume(payload.len() - U64_SIZE)
-                        .map_err(|_| CommitLogError::BrokenRecord)?;
+                        .map_err(|_| CommitLogError::BrokenRecordKvp(cursor.position))?;
 
                     OperationData::Update {
                         global_indx: u64::from_le_bytes(global_indx.to_vec().try_into().unwrap()),
@@ -194,6 +222,7 @@ impl TryFrom<&[u8]> for CommitLogEntry {
         };
 
         Ok(Self {
+            id: uuid,
             operation_type: item_type,
             data: op_data,
         })
@@ -216,10 +245,14 @@ mod test {
     #[tokio::test]
     pub async fn test_insert() {
         let operation_item = CommitLogEntry::insert(b"Hello World");
+        let uuid = operation_item.id.clone();
         let a = operation_item.to_vec();
         let from_a = CommitLogEntry::try_from(a.clone()).unwrap();
         assert_eq!(a, from_a.to_vec());
         assert_eq!(from_a.data.as_insert().unwrap(), b"Hello World");
+
+        // Test uuid
+        assert_eq!(uuid, from_a.id);
     }
 
     #[tokio::test]

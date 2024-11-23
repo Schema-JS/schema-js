@@ -1,6 +1,7 @@
 use crate::data_handler::DataHandler;
 use crate::errors::ShardErrors;
 use crate::fdm::FileDescriptorManager;
+use crate::shard::insert_item::InsertItem;
 use crate::shard::item_type::ShardItem;
 use crate::shard::map_shard::MapShard;
 use crate::shard::shards::kv::config::KvShardConfig;
@@ -136,7 +137,7 @@ impl Shard<KvShardConfig> for KvShard {
         }
     }
 
-    fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
+    fn insert_item(&self, data: &[InsertItem]) -> Result<u64, ShardErrors> {
         let mut writer = self.data.write();
         writer
             .operate(|file| {
@@ -146,7 +147,10 @@ impl Shard<KvShardConfig> for KvShard {
 
                 let prepare_data: Vec<Vec<u8>> = data
                     .iter()
-                    .map(|&row| ShardItem::new_complete(row, self.id.clone(), 0, false).to_vec())
+                    .map(|row| {
+                        ShardItem::new_complete(row.data, row.uuid, self.id.clone(), 0, false)
+                            .to_vec()
+                    })
                     .collect();
                 let write_data: Vec<&[u8]> =
                     prepare_data.iter().map(|row| row.as_slice()).collect();
@@ -190,6 +194,7 @@ impl Shard<KvShardConfig> for KvShard {
 #[cfg(test)]
 mod test {
     use crate::fdm::FileDescriptorManager;
+    use crate::shard::insert_item::InsertItem;
     use crate::shard::shards::kv::config::KvShardConfig;
     use crate::shard::shards::kv::shard::KvShard;
     use crate::shard::Shard;
@@ -216,9 +221,9 @@ mod test {
 
         kv_shard
             .insert_item(&[
-                &"a".to_string().into_bytes(),
-                &"b".to_string().into_bytes(),
-                &"c".to_string().into_bytes(),
+                InsertItem::new(b"a", Uuid::new_v4()),
+                InsertItem::new(b"b", Uuid::new_v4()),
+                InsertItem::new(b"c", Uuid::new_v4()),
             ])
             .unwrap();
 

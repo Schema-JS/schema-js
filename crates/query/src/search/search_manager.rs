@@ -378,7 +378,7 @@ mod test {
 
         let tbl = tables.get("users").unwrap();
 
-        tbl.temps.reconcile_all();
+        //tbl.temps.reconcile_all();
 
         let results = search_manager.search("users", &ops).unwrap();
         let row_0 = &results[0];
@@ -443,7 +443,7 @@ mod test {
 
             let tbl = tables.get("users").unwrap();
 
-            tbl.temps.reconcile_all();
+            //tbl.temps.reconcile_all();
 
             let results = search_manager.search("users", &ops).unwrap();
             let row_0 = &results[0];
