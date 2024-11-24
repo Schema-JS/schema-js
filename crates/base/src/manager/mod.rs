@@ -37,12 +37,14 @@ impl SchemeJsManager {
         let running = self.running.clone();
 
         for task in &self.tasks {
+            println!("Task {}", task.id);
             let task_cancel_token = task.cancellation_token.clone();
             let task = task.clone();
             let engine = engine.clone();
             let running = running.clone();
             let cancel_token = self.cancellation_token.clone();
             tokio::spawn(async move {
+                println!("Spawning new future");
                 select! {
                     _ = cancel_token.cancelled() => {
                     }

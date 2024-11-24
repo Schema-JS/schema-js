@@ -231,7 +231,7 @@ mod test {
             let mut reader = db_engine.write().unwrap();
             let mut db = reader.find_by_name_ref("rust-test-random").unwrap();
             let tbl = db.query_manager.tables.get("users").unwrap();
-            tbl.temps.reconcile_all();
+            tbl.temps.reconcile().unwrap();
 
             let a = tbl.data.read().get_element(0).unwrap();
             let b = tbl.data.read().get_element(1).unwrap();

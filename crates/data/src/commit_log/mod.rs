@@ -11,7 +11,7 @@ use crate::cursor::Cursor;
 use memmap2::MmapMut;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 
 #[derive(Debug)]
@@ -21,7 +21,8 @@ pub struct CommitLog {
     write_offset: AtomicUsize,
     initialized: bool,
     locked: AtomicBool,
-    busy: AtomicUsize, // Tracks the number of active writes
+    busy: AtomicUsize, // Tracks the number of active writes,
+    pub path: PathBuf,
 }
 
 pub const COMMIT_LOG_METADATA_SIZE: usize = 2;
@@ -32,7 +33,7 @@ impl CommitLog {
             .read(true)
             .write(true)
             .create(true)
-            .open(log_file_path)
+            .open(&log_file_path)
             .unwrap();
 
         file.set_len(size as u64).unwrap();
@@ -59,6 +60,7 @@ impl CommitLog {
             initialized,
             locked: AtomicBool::from(locked),
             busy: AtomicUsize::new(0),
+            path: log_file_path.as_ref().to_path_buf(),
         }
     }
 

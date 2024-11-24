@@ -50,6 +50,24 @@ impl CommitLogCollection {
         }
     }
 
+    pub fn reset(&self) {
+        let mut logs = self.logs.write();
+
+        {
+            // Clean paths
+            let paths: Vec<&PathBuf> = logs.iter().map(|e| &e.path).collect();
+            for path in paths {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+
+        // Clear
+        logs.clear();
+
+        let initial_log = Self::new_log(&self.folder, &self.prefix, self.log_size);
+        logs.push(initial_log);
+    }
+
     fn mark_as_waiting(&self, waiting: bool) {
         self.waiting_for_reconciliation
             .store(waiting, Ordering::Release);

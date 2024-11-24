@@ -7,6 +7,7 @@ pub const RECONCILE_DB_TASK: LazyCell<Task> = LazyCell::new(|| {
     Task::new(
         "1".to_string(),
         Box::new(move |rt| {
+            println!("RECONCILE_DB_TASK");
             let engine = rt.write();
             for db in engine.databases.iter() {
                 let query_manager = &db.query_manager;

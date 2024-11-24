@@ -151,7 +151,6 @@ impl TableCommitLogCollection {
                 reconcile_file.last_commit_log_index,
             )
         } else {
-            println!("Starting reconciliation {}", main_shard.get_last_index());
             let _ = reconcile_file
                 .start_reconciliation(main_shard.get_last_index())
                 .unwrap();
@@ -233,6 +232,9 @@ impl TableCommitLogCollection {
             )?;
         }
 
+        // Reset logs
+        self.commit_log_collection.reset();
+
         reconcile_file
             .stop_reconciliation(main_shard.get_last_index())
             .unwrap();
@@ -302,7 +304,6 @@ impl TableCommitLogCollection {
         reconciliation_file.set_last_reconciled_entry(log_index);
 
         // unwrap is NoOp bc flush is false
-        println!("Last global index {}", main_shard.get_last_index());
         reconciliation_file
             .set_last_global_index(main_shard.get_last_index(), false)
             .unwrap();

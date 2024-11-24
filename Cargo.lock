@@ -2958,6 +2958,7 @@ dependencies = [
  "chashmap",
  "enum-as-inner",
  "flaky_test",
+ "log",
  "parking_lot 0.12.3",
  "schemajs_config",
  "schemajs_data",

@@ -7,6 +7,7 @@ use crate::managers::single::table_shard::TableShard;
 use crate::row::Row;
 use crate::search::search_manager::QuerySearchManager;
 use chashmap::CHashMap;
+use log::debug;
 use schemajs_config::DatabaseConfig;
 use schemajs_data::fdm::FileDescriptorManager;
 use schemajs_data::shard::insert_item::InsertItem;

@@ -546,6 +546,11 @@ mod test {
                 create_rt
                     .js_runtime
                     .execute_script(located_script_name!(), script)?;
+
+                println!("Executed");
+
+                // Give it some time to reconcile in the background
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             }
         }
 
@@ -668,11 +673,7 @@ mod test {
             )
             .unwrap();
 
-            let raw_insert = db
-                .query_manager
-                .raw_insert(&mut [row], true)
-                .unwrap()
-                .unwrap();
+            let raw_insert = db.query_manager.raw_insert(&mut [row], true).unwrap();
             let mut unbounded = unbounded_channel();
             let helper_call = HelperCall::CustomQuery {
                 identifier: "searchRowLuis".to_string(),
