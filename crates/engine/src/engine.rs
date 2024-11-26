@@ -198,6 +198,7 @@ mod test {
                             "id": "1"
                         }),
                         tbl,
+                        0,
                     )
                     .unwrap(),
                 )
@@ -217,6 +218,7 @@ mod test {
                             "id": "2"
                         }),
                         tbl,
+                        0,
                     )
                     .unwrap(),
                 )
@@ -236,8 +238,8 @@ mod test {
             let a = tbl.data.read().get_element(0).unwrap();
             let b = tbl.data.read().get_element(1).unwrap();
 
-            let a = RowJson::from_slice(a.get_used_data(), tbl.table.clone());
-            let b = RowJson::from_slice(b.get_used_data(), tbl.table.clone());
+            let a = RowJson::from_slice(a.get_used_data(), tbl.table.clone(), 0);
+            let b = RowJson::from_slice(b.get_used_data(), tbl.table.clone(), 1);
 
             let a_val = a
                 .get_value(tbl.table.get_column("id").unwrap())

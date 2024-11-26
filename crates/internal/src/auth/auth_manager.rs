@@ -126,6 +126,7 @@ impl AuthManager {
                 ))
                 .unwrap(),
                 tbl,
+                0,
             )
             .unwrap();
             let _ = db.query_manager.raw_insert(&mut [user_row], true).unwrap();

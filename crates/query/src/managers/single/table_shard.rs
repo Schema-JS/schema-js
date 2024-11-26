@@ -158,7 +158,12 @@ impl<T: Row> TableShard<T> {
         tbl_collection.set_on_reconcile(Box::new(move |rows| {
             let rows: Vec<(T, u64)> = rows
                 .into_iter()
-                .map(|row| (T::from_slice(&row.data, table.clone()), row.index))
+                .map(|row| {
+                    (
+                        T::from_slice(&row.data, table.clone(), row.index as usize),
+                        row.index,
+                    )
+                })
                 .collect();
 
             {

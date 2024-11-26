@@ -38,11 +38,15 @@ pub trait Row {
         })?)
     }
 
-    fn from_slice(slice: &[u8], table: Arc<Table>) -> Self;
+    fn from_slice(slice: &[u8], table: Arc<Table>, global_index: usize) -> Self;
 
-    fn from_data(data: Self::RowData, table: Arc<Table>) -> Self;
+    fn from_data(data: Self::RowData, table: Arc<Table>, global_index: usize) -> Self;
 
-    fn from_json(data: serde_json::Value, table: Arc<Table>) -> Result<Self, ()>
+    fn from_json(
+        data: serde_json::Value,
+        table: Arc<Table>,
+        global_index: usize,
+    ) -> Result<Self, ()>
     where
         Self: Sized,
     {
@@ -52,10 +56,14 @@ pub trait Row {
             let tbl_col = table.get_column(col_name).ok_or(())?;
             val_map.insert(col_name.clone(), DataValue::from((tbl_col, val)));
         }
-        Ok(Self::from_map(table, val_map)?)
+        Ok(Self::from_map(table, val_map, global_index)?)
     }
 
-    fn from_map(table: Arc<Table>, data: HashMap<String, DataValue>) -> Result<Self, ()>
+    fn from_map(
+        table: Arc<Table>,
+        data: HashMap<String, DataValue>,
+        global_index: usize,
+    ) -> Result<Self, ()>
     where
         Self: Sized;
 

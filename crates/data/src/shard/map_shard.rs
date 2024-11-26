@@ -582,15 +582,9 @@ mod test {
         let i1 = context.get_element(0).unwrap();
         assert!(i1.shard_item_type.is_moved());
         assert_eq!(i1.get_used_data(), b"123"); // Keeps the old data bc the new is moved into a new item
-        let shard_id = i1.moved_shard_id.unwrap();
-        let local_indx = i1.moved_offset.unwrap();
-        println!("{} {}", shard_id, local_indx);
+        let global_indx = i1.moved_shard_index.unwrap();
 
-        assert_eq!(context.current_master_shard.get_id(), shard_id.to_string());
-        let read = context
-            .current_master_shard
-            .read_item_from_index(local_indx)
-            .unwrap();
+        let read = context.get_element(global_indx).unwrap();
         assert_eq!(read.get_used_data(), new_data);
     }
 }

@@ -31,8 +31,9 @@ pub async fn op_engine_insert_row(
 
     let table = query_manager.get_table(&table_name);
     if let Some(table) = table {
-        return query_manager
-            .insert(RowJson::from_json(row, table).map_err(|_| QueryError::InvalidSerialization)?);
+        return query_manager.insert(
+            RowJson::from_json(row, table, 0).map_err(|_| QueryError::InvalidSerialization)?,
+        );
     }
 
     return Err(QueryError::InvalidInsertion);

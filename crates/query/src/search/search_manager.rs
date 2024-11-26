@@ -3,6 +3,11 @@ use crate::managers::single::table_shard::TableShard;
 use crate::ops::query_ops::{QueryOps, QueryVal};
 use crate::row::Row;
 use chashmap::CHashMap;
+use schemajs_data::errors::ShardErrors;
+use schemajs_data::shard::item_type::ShardItem;
+use schemajs_data::shard::map_shard::MapShard;
+use schemajs_data::shard::shards::data_shard::config::DataShardConfig;
+use schemajs_data::shard::shards::data_shard::shard::DataShard;
 use schemajs_index::composite_key::CompositeKey;
 use schemajs_primitives::index::Index;
 use std::collections::HashSet;
@@ -171,6 +176,36 @@ impl<T: Row> QuerySearchManager<T> {
         Some(CompositeKey(key_parts))
     }
 
+    pub fn resolve_moved_item(
+        &self,
+        item: &ShardItem,
+        shard: &MapShard<DataShard, DataShardConfig>,
+    ) -> Option<ShardItem> {
+        let mut current_type = item.shard_item_type.clone();
+
+        if !current_type.is_moved() {
+            return None;
+        }
+
+        let mut current_shard_index = item.moved_shard_index?;
+
+        while current_type.is_moved() {
+            // Fetch the next shard item
+            let moved_item = shard.get_element(current_shard_index).ok()?;
+
+            current_type = moved_item.shard_item_type.clone();
+
+            // If the new item is still moved, update the index and continue
+            if current_type.is_moved() {
+                current_shard_index = moved_item.moved_shard_index?;
+            } else {
+                return Some(moved_item); // Return resolved item if not moved
+            }
+        }
+
+        None // Default case if resolution fails
+    }
+
     pub fn search(&self, table_name: &str, ops: &QueryOps) -> Result<Vec<T>, QueryError> {
         let get_table_shard = self
             .table_shards
@@ -183,11 +218,33 @@ impl<T: Row> QuerySearchManager<T> {
 
         for pointer in pointers {
             let tbl_data = get_table_shard.data.read();
-            let data = tbl_data.get_element(pointer as usize).unwrap();
-            results.push(T::from_slice(
-                data.get_used_data(),
-                get_table_shard.table.clone(),
-            ));
+            let data = tbl_data.get_element(pointer as usize);
+
+            match data {
+                Ok(mut data) => {
+                    // TODO: Remove from shards / Re-use space
+                    if data.shard_item_type.is_deleted() {
+                        continue;
+                    }
+
+                    if data.shard_item_type.is_moved() {
+                        let find_new_item = self.resolve_moved_item(&data, &tbl_data);
+                        match find_new_item {
+                            None => continue,
+                            Some(moved_item) => {
+                                data = moved_item;
+                            }
+                        }
+                    }
+
+                    results.push(T::from_slice(
+                        data.get_used_data(),
+                        get_table_shard.table.clone(),
+                        pointer as usize,
+                    ));
+                }
+                Err(_) => {}
+            }
         }
 
         Ok(results)
@@ -214,7 +271,7 @@ mod test {
     use uuid::Uuid;
 
     fn create_row(tbl: Arc<Table>, json: serde_json::Value) -> RowJson {
-        RowJson::from_json(json, tbl).unwrap()
+        RowJson::from_json(json, tbl, 0).unwrap()
     }
 
     #[flaky_test::flaky_test(tokio)]

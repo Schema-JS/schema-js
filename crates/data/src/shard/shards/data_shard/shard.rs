@@ -252,17 +252,10 @@ impl Shard<DataShardConfig> for DataShard {
             .write()
             .operate(|file| {
                 for (offset, new_item, mut original) in items_to_move {
-                    let insert_new_item = map_shard
+                    let global_index = map_shard
                         .insert_rows(&[InsertItem::new(&new_item, original.current_item_id)]); // TODO: Insert from data item
-                    let shard = {
-                        let (shard, local_indx) = map_shard
-                            .get_shard_by_global_item_index(insert_new_item)
-                            .unwrap();
-                        (shard.get_id(), local_indx)
-                    };
 
-                    original.moved_shard_id = Some(Uuid::from_str(shard.0.as_str()).unwrap()); // Todo: Unwrap
-                    original.moved_offset = Some(shard.1);
+                    original.moved_shard_index = Some(global_index);
 
                     write_at(file, &original.to_vec(), offset as u64)?;
                 }

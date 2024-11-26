@@ -153,7 +153,7 @@ impl<T: Row> SingleQueryManager<T> {
                     .ok_or_else(|| QueryError::InvalidTable(e.0.clone()))?
                     .table
                     .clone();
-                T::from_map(table, e.1).map_err(|_| QueryError::InvalidInsertion)
+                T::from_map(table, e.1, 0).map_err(|_| QueryError::InvalidInsertion)
             })
             .collect::<Result<Vec<_>, _>>()?;
         self.raw_insert(&mut rows, master_insert)
@@ -262,7 +262,7 @@ impl<T: Row> SingleQueryManager<T> {
                             table_shard.table.clone(),
                             table_shard.indexes.clone(),
                             vec![(
-                                T::from_slice(row, table_shard.table.clone()),
+                                T::from_slice(row, table_shard.table.clone(), pointer),
                                 pointer as u64,
                             )],
                         );

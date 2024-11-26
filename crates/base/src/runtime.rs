@@ -700,6 +700,7 @@ mod test {
                     "enabled": true
                 }),
                 db.query_manager.get_table("users").unwrap(),
+                0,
             )
             .unwrap();
 
