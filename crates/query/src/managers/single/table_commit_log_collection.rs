@@ -387,7 +387,7 @@ mod tests {
         let fake_partial_folder_path = std::env::current_dir()
             .unwrap()
             .join(format!("./test_cases/data/{}", Uuid::new_v4().to_string()));
-        std::fs::create_dir(&fake_partial_folder_path).unwrap();
+        let _ = std::fs::create_dir_all(&fake_partial_folder_path);
 
         fake_partial_folder_path
     }
