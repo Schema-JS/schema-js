@@ -2,7 +2,7 @@ pub mod table_commit_log_collection;
 pub mod table_shard;
 
 use crate::errors::QueryError;
-use crate::managers::query_result::{InsertResult, QueryResult};
+use crate::managers::query_result::{DeleteResult, InsertResult, QueryResult, UpdateResult};
 use crate::managers::single::table_shard::TableShard;
 use crate::row::Row;
 use crate::search::search_manager::QuerySearchManager;
@@ -243,10 +243,7 @@ impl<T: Row> SingleQueryManager<T> {
                             QueryResult::Insert(InsertResult {
                                 last_uuid: id,
                                 succeeded: e.is_succeeded(),
-                                failed_items: e
-                                    .as_partial()
-                                    .map(|e| e.clone())
-                                    .unwrap_or_else(|| vec![]),
+                                failed_items: e.get_failed_items(),
                                 duration: instant.elapsed(),
                             })
                         })
@@ -281,7 +278,59 @@ impl<T: Row> SingleQueryManager<T> {
         }))
     }
 
-    pub fn delete(&self, row_indexes: &[u64]) {}
+    pub fn delete(&self, tbl_name: &str, row_indexes: &[u64]) -> Result<QueryResult, QueryError> {
+        let instant = Instant::now();
+        return if let Some(table_shard) = self.tables.get(tbl_name) {
+            Ok(table_shard
+                .temps
+                .delete(row_indexes)
+                .map(|result| {
+                    QueryResult::Delete(DeleteResult {
+                        succeeded: result.is_succeeded(),
+                        failed_items: result.get_failed_items(),
+                        duration: instant.elapsed(),
+                    })
+                })
+                .map_err(|e| QueryError::from(e))?)
+        } else {
+            Err(QueryError::InvalidTable(tbl_name.to_string()))
+        };
+    }
+
+    pub fn update(&self, tbl_name: &str, data: &[(u64, T)]) -> Result<QueryResult, QueryError> {
+        let processed_rows: Vec<(u64, Vec<u8>)> = data
+            .iter()
+            .filter_map(|update_data| {
+                let row = &update_data.1;
+                match row.to_vec() {
+                    Ok(row_bytes) => Some((update_data.0, row_bytes)), // Success case
+                    Err(_) => None, // Handle error by skipping (or you could collect errors here)
+                }
+            })
+            .collect();
+
+        let update_data: Vec<(u64, &[u8])> = processed_rows
+            .iter()
+            .map(|row| (row.0, row.1.as_slice()))
+            .collect();
+
+        let instant = Instant::now();
+        return if let Some(table_shard) = self.tables.get(tbl_name) {
+            Ok(table_shard
+                .temps
+                .update(&update_data)
+                .map(|result| {
+                    QueryResult::Update(UpdateResult {
+                        succeeded: result.is_succeeded(),
+                        failed_items: result.get_failed_items(),
+                        duration: instant.elapsed(),
+                    })
+                })
+                .map_err(|e| QueryError::from(e))?)
+        } else {
+            Err(QueryError::InvalidTable(tbl_name.to_string()))
+        };
+    }
 
     pub fn get_table(&self, table_name: &str) -> Option<Arc<Table>> {
         self.tables.get(table_name).map(|e| e.table.clone())

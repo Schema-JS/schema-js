@@ -276,54 +276,7 @@ mod test {
 
     #[flaky_test::flaky_test(tokio)]
     pub async fn test_search_manager() {
-        let test_db = Uuid::new_v4().to_string();
-        let db_folder = create_scheme_js_db(None, test_db.as_str());
-        let channel = create_helper_channel(1);
-        let query_manager = SingleQueryManager::new(
-            test_db.clone(),
-            channel.0,
-            Arc::new(DatabaseConfig::default()),
-            Arc::new(FileDescriptorManager::new(2500)),
-        );
-
-        let tbl = Table::new("users")
-            .add_column(Column::new("user_id", DataTypes::String))
-            .add_column(Column::new("user_email", DataTypes::String))
-            .add_column(Column::new("user_country", DataTypes::String))
-            .add_column(Column::new("user_age", DataTypes::String))
-            .add_column(Column::new("user_name", DataTypes::String))
-            .add_index(Index {
-                name: "user_id_indx".to_string(),
-                members: vec![String::from("user_id")],
-                index_type: IndexType::Hash,
-            })
-            .add_index(Index {
-                name: "user_email_indx".to_string(),
-                members: vec![String::from("user_email")],
-                index_type: IndexType::Hash,
-            })
-            .add_index(Index {
-                name: "user_country_indx".to_string(),
-                members: vec![String::from("user_country")],
-                index_type: IndexType::Hash,
-            })
-            .add_index(Index {
-                name: "user_age_indx".to_string(),
-                members: vec![String::from("user_age")],
-                index_type: IndexType::Hash,
-            })
-            .add_index(Index {
-                name: "user_name_indx".to_string(),
-                members: vec![String::from("user_name")],
-                index_type: IndexType::Hash,
-            })
-            .add_index(Index {
-                name: "age_country_indx".to_string(),
-                members: vec![String::from("user_age"), String::from("user_country")],
-                index_type: IndexType::Hash,
-            });
-
-        query_manager.register_table(tbl);
+        let query_manager = register_user_tbl();
 
         let table = query_manager.get_table("users").unwrap();
 
@@ -452,6 +405,58 @@ mod test {
         assert_eq!(vals[1], "Luis");
     }
 
+    fn register_user_tbl() -> SingleQueryManager<RowJson> {
+        let test_db = Uuid::new_v4().to_string();
+        let db_folder = create_scheme_js_db(None, test_db.as_str());
+        let channel = create_helper_channel(1);
+        let query_manager = SingleQueryManager::new(
+            test_db.clone(),
+            channel.0,
+            Arc::new(DatabaseConfig::default()),
+            Arc::new(FileDescriptorManager::new(2500)),
+        );
+
+        let tbl = Table::new("users")
+            .add_column(Column::new("user_id", DataTypes::String))
+            .add_column(Column::new("user_email", DataTypes::String))
+            .add_column(Column::new("user_country", DataTypes::String))
+            .add_column(Column::new("user_age", DataTypes::String))
+            .add_column(Column::new("user_name", DataTypes::String))
+            .add_index(Index {
+                name: "user_id_indx".to_string(),
+                members: vec![String::from("user_id")],
+                index_type: IndexType::Hash,
+            })
+            .add_index(Index {
+                name: "user_email_indx".to_string(),
+                members: vec![String::from("user_email")],
+                index_type: IndexType::Hash,
+            })
+            .add_index(Index {
+                name: "user_country_indx".to_string(),
+                members: vec![String::from("user_country")],
+                index_type: IndexType::Hash,
+            })
+            .add_index(Index {
+                name: "user_age_indx".to_string(),
+                members: vec![String::from("user_age")],
+                index_type: IndexType::Hash,
+            })
+            .add_index(Index {
+                name: "user_name_indx".to_string(),
+                members: vec![String::from("user_name")],
+                index_type: IndexType::Hash,
+            })
+            .add_index(Index {
+                name: "age_country_indx".to_string(),
+                members: vec![String::from("user_age"), String::from("user_country")],
+                index_type: IndexType::Hash,
+            });
+
+        query_manager.register_table(tbl);
+        query_manager
+    }
+
     fn get_user_table_for_drop_test() -> Table {
         Table::new("users")
             .add_column(Column::new("user_id", DataTypes::String).set_default_index(true))
@@ -544,5 +549,157 @@ mod test {
                 DataValue::String("1".to_string())
             );
         }
+    }
+
+    #[tokio::test]
+    pub async fn test_search_with_deleted_rows() {
+        let query_manager = register_user_tbl();
+
+        let table = query_manager.get_table("users").unwrap();
+
+        let row_1 = query_manager
+            .insert(create_row(
+                table.clone(),
+                serde_json::json!({
+                    "_uid": "0874d926-52a9-43e7-b682-9d7c5ec62b30",
+                    "user_id": "1",
+                    "user_email": "email@outlook.com",
+                    "user_country": "US",
+                    "user_age": "20",
+                    "user_name": "andreespirela"
+                }),
+            ))
+            .unwrap();
+
+        let user_table = query_manager.tables.get("users").unwrap();
+
+        // Reconcile data
+        user_table.temps.reconcile().unwrap();
+
+        let tables = query_manager.tables.clone();
+        let search_manager = QuerySearchManager::new(tables.clone());
+        let ops = QueryOps::Or(vec![QueryOps::And(vec![QueryOps::Condition(QueryVal {
+            key: "user_id".to_string(),
+            filter_type: "=".to_string(),
+            value: DataValue::String("1".to_string()),
+        })])]);
+
+        let results = search_manager.search("users", &ops).unwrap();
+        let row_0 = &results[0];
+        assert_eq!(row_0.global_index, 0);
+
+        query_manager
+            .delete("users", &[row_0.global_index as u64])
+            .unwrap();
+
+        // Reconcile data (delete op)
+        user_table.temps.reconcile().unwrap();
+
+        let results = search_manager.search("users", &ops).unwrap();
+        let row_0 = &results.get(0);
+        assert!(row_0.is_none());
+    }
+
+    #[tokio::test]
+    pub async fn test_search_with_moved_rows() {
+        let query_manager = register_user_tbl();
+
+        let table = query_manager.get_table("users").unwrap();
+
+        let row_1 = query_manager
+            .insert(create_row(
+                table.clone(),
+                serde_json::json!({
+                    "_uid": "0874d926-52a9-43e7-b682-9d7c5ec62b30",
+                    "user_id": "1",
+                    "user_email": "email@outlook.com",
+                    "user_country": "US",
+                    "user_age": "20",
+                    "user_name": "andreespirela"
+                }),
+            ))
+            .unwrap();
+
+        let user_table = query_manager.tables.get("users").unwrap();
+
+        // Reconcile data
+        user_table.temps.reconcile().unwrap();
+
+        let tables = query_manager.tables.clone();
+        let search_manager = QuerySearchManager::new(tables.clone());
+        let ops = QueryOps::Or(vec![QueryOps::And(vec![QueryOps::Condition(QueryVal {
+            key: "user_id".to_string(),
+            filter_type: "=".to_string(),
+            value: DataValue::String("1".to_string()),
+        })])]);
+
+        let results = search_manager.search("users", &ops).unwrap();
+        let row_0 = &results[0];
+        let col = user_table.table.get_column("user_name").unwrap();
+        assert_eq!(row_0.global_index, 0);
+        let initial_user_name = row_0.get_value(col).unwrap().to_string();
+        assert_eq!(initial_user_name, "andreespirela");
+
+        query_manager
+            .update("users", &[(row_0.global_index as u64, create_row(
+                table.clone(),
+                serde_json::json!({
+                    "_uid": "0874d926-52a9-43e7-b682-9d7c5ec62b30",
+                    "user_id": "1",
+                    "user_email": "email@outlook.com",
+                    "user_country": "US",
+                    "user_age": "20",
+                    "user_name": "The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item"
+                }),
+            ))])
+            .unwrap();
+
+        // Reconcile data (update op)
+        user_table.temps.reconcile().unwrap();
+
+        let results = search_manager.search("users", &ops).unwrap();
+        let row_0 = &results.get(0);
+        assert!(row_0.is_some());
+        let row_0 = row_0.unwrap();
+        let col = user_table.table.get_column("user_name").unwrap();
+        let new_user_name = row_0.get_value(col).unwrap().to_string();
+        assert_eq!(
+            new_user_name,
+            "The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item"
+        );
     }
 }

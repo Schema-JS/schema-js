@@ -41,6 +41,14 @@ pub enum TableCommitStatus {
     Partial(Vec<usize>),
 }
 
+impl TableCommitStatus {
+    pub fn get_failed_items(&self) -> Vec<usize> {
+        self.as_partial()
+            .map(|e| e.clone())
+            .unwrap_or_else(|| vec![])
+    }
+}
+
 #[derive(Debug, Error, Serialize, Deserialize, Clone)]
 pub enum TableCommitError {
     #[error("I/O Error during table commit")]
@@ -142,6 +150,14 @@ impl TableCommitLogCollection {
         let entries: Vec<CommitLogEntry> = data
             .iter()
             .map(|&global| CommitLogEntry::delete(global))
+            .collect();
+        self.log(&entries)
+    }
+
+    pub fn update(&self, data: &[(u64, &[u8])]) -> Result<TableCommitStatus, TableCommitError> {
+        let entries: Vec<CommitLogEntry> = data
+            .iter()
+            .map(|&global| CommitLogEntry::update(global.1, global.0))
             .collect();
         self.log(&entries)
     }

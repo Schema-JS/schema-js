@@ -237,32 +237,46 @@ impl Shard<DataShardConfig> for DataShard {
             }
         }
 
-        self.data
-            .write()
-            .operate(|file| {
-                for (offset, item) in items_to_update {
-                    write_at(file, &item.to_vec(), offset as u64)?;
-                }
+        if !items_to_update.is_empty() {
+            self.data
+                .write()
+                .operate(|file| {
+                    for (offset, item) in items_to_update {
+                        write_at(file, &item.to_vec(), offset as u64)?;
+                    }
 
-                Ok(())
-            })
-            .map_err(|_| ShardErrors::FailedUpdate)?;
+                    Ok(())
+                })
+                .map_err(|_| ShardErrors::FailedUpdate)?;
+        }
 
-        self.data
-            .write()
-            .operate(|file| {
-                for (offset, new_item, mut original) in items_to_move {
+        if !items_to_move.is_empty() {
+            let updated_items: Vec<(u64, Vec<u8>)> = items_to_move
+                .into_iter()
+                .map(|(offset, new_item, mut original)| {
+                    // Perform shard operation
                     let global_index = map_shard
-                        .insert_rows(&[InsertItem::new(&new_item, original.current_item_id)]); // TODO: Insert from data item
+                        .insert_rows(&[InsertItem::new(&new_item, original.current_item_id)]);
 
+                    // Update the moved shard index
                     original.moved_shard_index = Some(global_index);
 
-                    write_at(file, &original.to_vec(), offset as u64)?;
-                }
+                    // Prepare data for writing to the file
+                    (offset as u64, original.to_vec())
+                })
+                .collect();
 
-                Ok(())
-            })
-            .map_err(|_| ShardErrors::FailedUpdate)?;
+            // Phase 2: Acquire the write lock and write to the file
+            self.data
+                .write()
+                .operate(|file| {
+                    for (offset, data) in updated_items {
+                        write_at(file, &data, offset)?; // Write each item to the file
+                    }
+                    Ok(())
+                })
+                .map_err(|_| ShardErrors::FailedUpdate)?;
+        }
 
         Ok(())
     }
