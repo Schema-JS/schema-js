@@ -4,6 +4,8 @@ use crate::utils::get_entry_size;
 use parking_lot::RwLock;
 use schemajs_data::errors::ShardErrors;
 use schemajs_data::fdm::FileDescriptorManager;
+use schemajs_data::shard::insert_item::InsertItem;
+use schemajs_data::shard::item_type::ShardItem;
 use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::kv::config::KvShardConfig;
 use schemajs_data::shard::shards::kv::shard::KvShard;
@@ -13,7 +15,9 @@ use std::cmp::Ordering;
 use std::io::{Seek, Write};
 use std::marker::PhantomData;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct IndexShard<K: IndexKey, V: IndexValue> {
@@ -73,10 +77,12 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         shard: &KvShard,
         index: usize,
     ) -> Result<Vec<u8>, ShardErrors> {
-        shard.read_item_from_index(index)
+        shard
+            .read_item_from_index(index)
+            .map(|e| e.get_used_data().to_vec())
     }
 
-    pub fn get_entry(&self, index: usize, global: bool) -> Option<IndexEntry> {
+    pub fn get_entry(&self, index: usize, global: bool) -> Option<(IndexEntry, Uuid)> {
         let get_el = if !global {
             self.data.read().get_element_from_master(index)
         } else {
@@ -84,16 +90,23 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
         };
 
         match get_el {
-            Ok(el) => Some(self.build_entry_from_vec(el)?),
+            Ok(el) => Some((
+                self.build_entry_from_vec(el.get_used_data().to_vec())?,
+                el.current_item_id,
+            )),
             Err(_) => None,
         }
     }
 
-    pub fn get_kv(&self, index: usize, global: bool) -> Option<(K, V, Vec<u8>)> {
+    pub fn get_kv(&self, index: usize, global: bool) -> Option<((K, V, Vec<u8>), Uuid)> {
         let entry = self.get_entry(index, global);
         match entry {
             None => return None,
-            Some((key_unit, val_unit, el)) => Some(self.build_kv(key_unit, val_unit, el)),
+            Some(val) => {
+                let (key_unit, val_unit, el) = val.0;
+
+                Some((self.build_kv(key_unit, val_unit, el), val.1))
+            }
         }
     }
 
@@ -121,7 +134,10 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
             })
             .collect();
 
-        let entries: Vec<&[u8]> = data_units.iter().map(|i| i.as_slice()).collect();
+        let entries: Vec<InsertItem> = data_units
+            .iter()
+            .map(|i| InsertItem::new(i.as_slice(), Uuid::new_v4()))
+            .collect();
 
         self.data.write().insert_rows(&entries);
 
@@ -144,7 +160,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
 
                 let shards = {
                     let mut shards = vec![&reader.current_master_shard];
-                    let combined_shards: Vec<&KvShard> = past_master_shards.values().collect();
+                    let combined_shards: Vec<&Arc<KvShard>> = past_master_shards.values().collect();
                     shards.extend(combined_shards);
                     shards
                 };
@@ -211,10 +227,29 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
 
     fn keep_binary_order(&self) {
         let mut i = { self.data.read().current_master_shard.get_last_index() };
+        let shard_id = self.data.read().current_master_shard.get_id();
+        let shard_uuid = Uuid::from_str(&shard_id).unwrap();
 
         while i > 0 {
-            let (curr_index, _, curr_original_el) = self.get_kv(i as usize, false).unwrap();
-            let (prev_index, _, prev_original_el) = self.get_kv(i as usize - 1, false).unwrap();
+            let ((curr_index, _, curr_original_el), curr_original_el_item_id) =
+                self.get_kv(i as usize, false).unwrap();
+            let ((prev_index, _, prev_original_el), prev_original_el_item_id) =
+                self.get_kv(i as usize - 1, false).unwrap();
+
+            let curr_original_el = ShardItem::new_complete(
+                curr_original_el.as_slice(),
+                curr_original_el_item_id,
+                shard_uuid.clone(),
+                0,
+                false,
+            );
+            let prev_original_el = ShardItem::new_complete(
+                prev_original_el.as_slice(),
+                prev_original_el_item_id,
+                shard_uuid.clone(),
+                0,
+                false,
+            );
 
             match curr_index.cmp(&prev_index) {
                 Ordering::Less => {
@@ -224,12 +259,7 @@ impl<K: IndexKey, V: IndexValue> IndexShard<K, V> {
                         .operate(|file| {
                             writer
                                 .current_master_shard
-                                .swap_elements(
-                                    file,
-                                    i as usize,
-                                    &curr_original_el,
-                                    &prev_original_el,
-                                )
+                                .swap_elements(file, i as usize, curr_original_el, prev_original_el)
                                 .unwrap();
                             i -= 1;
                             Ok(())
@@ -292,15 +322,15 @@ mod test {
         index.insert(StringIndexKey("h".repeat(key_size)), vec![0u8; 1024].into());
 
         {
-            let entry = index.get_kv(0, true).unwrap();
+            let entry = index.get_kv(0, true).unwrap().0;
             assert_eq!(entry.0, StringIndexKey("a".repeat(key_size)));
             assert_eq!(entry.1 .0, vec![0u8; 1024]);
 
-            let entry = index.get_kv(4, true).unwrap();
+            let entry = index.get_kv(4, true).unwrap().0;
             assert_eq!(entry.0, StringIndexKey("e".repeat(key_size)));
             assert_eq!(entry.1 .0, [1u8; 1024]);
 
-            let entry = index.get_kv(7, true).unwrap();
+            let entry = index.get_kv(7, true).unwrap().0;
             assert_eq!(entry.0, StringIndexKey("h".repeat(key_size)));
             assert_eq!(entry.1 .0, [0u8; 1024]);
 
@@ -342,13 +372,13 @@ mod test {
         index.insert(StringIndexKey("d".repeat(key_size)), vec![0u8; 1024].into());
         index.insert(StringIndexKey("e".repeat(key_size)), vec![0u8; 1024].into());
 
-        assert_eq!(index.get_kv(0, true).unwrap().0 .0, "b".repeat(key_size));
-        assert_eq!(index.get_kv(1, true).unwrap().0 .0, "d".repeat(key_size));
-        assert_eq!(index.get_kv(2, true).unwrap().0 .0, "e".repeat(key_size));
-        assert_eq!(index.get_kv(3, true).unwrap().0 .0, "h".repeat(key_size));
-        assert_eq!(index.get_kv(4, true).unwrap().0 .0, "i".repeat(key_size));
-        assert_eq!(index.get_kv(5, true).unwrap().0 .0, "j".repeat(key_size));
-        assert_eq!(index.get_kv(6, true).unwrap().0 .0, "z".repeat(key_size));
+        assert_eq!(index.get_kv(0, true).unwrap().0 .0 .0, "b".repeat(key_size));
+        assert_eq!(index.get_kv(1, true).unwrap().0 .0 .0, "d".repeat(key_size));
+        assert_eq!(index.get_kv(2, true).unwrap().0 .0 .0, "e".repeat(key_size));
+        assert_eq!(index.get_kv(3, true).unwrap().0 .0 .0, "h".repeat(key_size));
+        assert_eq!(index.get_kv(4, true).unwrap().0 .0 .0, "i".repeat(key_size));
+        assert_eq!(index.get_kv(5, true).unwrap().0 .0 .0, "j".repeat(key_size));
+        assert_eq!(index.get_kv(6, true).unwrap().0 .0 .0, "z".repeat(key_size));
 
         std::fs::remove_dir_all(index_folder).unwrap();
     }
@@ -394,14 +424,23 @@ mod test {
         );
 
         // Assert the correct order
-        assert_eq!(index.get_kv(0, true).unwrap().0 .0, pad_key("string(a:0)"));
-        assert_eq!(index.get_kv(1, true).unwrap().0 .0, pad_key("string(a:1)"));
-        assert_eq!(index.get_kv(2, true).unwrap().0 .0, pad_key("string(a:2)"));
+        assert_eq!(
+            index.get_kv(0, true).unwrap().0 .0 .0,
+            pad_key("string(a:0)")
+        );
+        assert_eq!(
+            index.get_kv(1, true).unwrap().0 .0 .0,
+            pad_key("string(a:1)")
+        );
+        assert_eq!(
+            index.get_kv(2, true).unwrap().0 .0 .0,
+            pad_key("string(a:2)")
+        );
 
         // Check that the values correspond correctly
-        assert_eq!(index.get_kv(0, true).unwrap().1 .0, vec![1u8; 1024]);
-        assert_eq!(index.get_kv(1, true).unwrap().1 .0, vec![2u8; 1024]);
-        assert_eq!(index.get_kv(2, true).unwrap().1 .0, vec![0u8; 1024]);
+        assert_eq!(index.get_kv(0, true).unwrap().0 .1 .0, vec![1u8; 1024]);
+        assert_eq!(index.get_kv(1, true).unwrap().0 .1 .0, vec![2u8; 1024]);
+        assert_eq!(index.get_kv(2, true).unwrap().0 .1 .0, vec![0u8; 1024]);
 
         std::fs::remove_dir_all(index_folder).unwrap();
     }

@@ -3,6 +3,11 @@ use crate::managers::single::table_shard::TableShard;
 use crate::ops::query_ops::{QueryOps, QueryVal};
 use crate::row::Row;
 use chashmap::CHashMap;
+use schemajs_data::errors::ShardErrors;
+use schemajs_data::shard::item_type::ShardItem;
+use schemajs_data::shard::map_shard::MapShard;
+use schemajs_data::shard::shards::data_shard::config::DataShardConfig;
+use schemajs_data::shard::shards::data_shard::shard::DataShard;
 use schemajs_index::composite_key::CompositeKey;
 use schemajs_primitives::index::Index;
 use std::collections::HashSet;
@@ -171,6 +176,36 @@ impl<T: Row> QuerySearchManager<T> {
         Some(CompositeKey(key_parts))
     }
 
+    pub fn resolve_moved_item(
+        &self,
+        item: &ShardItem,
+        shard: &MapShard<DataShard, DataShardConfig>,
+    ) -> Option<ShardItem> {
+        let mut current_type = item.shard_item_type.clone();
+
+        if !current_type.is_moved() {
+            return None;
+        }
+
+        let mut current_shard_index = item.moved_shard_index?;
+
+        while current_type.is_moved() {
+            // Fetch the next shard item
+            let moved_item = shard.get_element(current_shard_index).ok()?;
+
+            current_type = moved_item.shard_item_type.clone();
+
+            // If the new item is still moved, update the index and continue
+            if current_type.is_moved() {
+                current_shard_index = moved_item.moved_shard_index?;
+            } else {
+                return Some(moved_item); // Return resolved item if not moved
+            }
+        }
+
+        None // Default case if resolution fails
+    }
+
     pub fn search(&self, table_name: &str, ops: &QueryOps) -> Result<Vec<T>, QueryError> {
         let get_table_shard = self
             .table_shards
@@ -183,8 +218,33 @@ impl<T: Row> QuerySearchManager<T> {
 
         for pointer in pointers {
             let tbl_data = get_table_shard.data.read();
-            let data = tbl_data.get_element(pointer as usize).unwrap();
-            results.push(T::from_slice(&data, get_table_shard.table.clone()));
+            let data = tbl_data.get_element(pointer as usize);
+
+            match data {
+                Ok(mut data) => {
+                    // TODO: Remove from shards / Re-use space
+                    if data.shard_item_type.is_deleted() {
+                        continue;
+                    }
+
+                    if data.shard_item_type.is_moved() {
+                        let find_new_item = self.resolve_moved_item(&data, &tbl_data);
+                        match find_new_item {
+                            None => continue,
+                            Some(moved_item) => {
+                                data = moved_item;
+                            }
+                        }
+                    }
+
+                    results.push(T::from_slice(
+                        data.get_used_data(),
+                        get_table_shard.table.clone(),
+                        pointer as usize,
+                    ));
+                }
+                Err(_) => {}
+            }
         }
 
         Ok(results)
@@ -211,59 +271,12 @@ mod test {
     use uuid::Uuid;
 
     fn create_row(tbl: Arc<Table>, json: serde_json::Value) -> RowJson {
-        RowJson::from_json(json, tbl).unwrap()
+        RowJson::from_json(json, tbl, 0).unwrap()
     }
 
     #[flaky_test::flaky_test(tokio)]
     pub async fn test_search_manager() {
-        let test_db = Uuid::new_v4().to_string();
-        let db_folder = create_scheme_js_db(None, test_db.as_str());
-        let channel = create_helper_channel(1);
-        let query_manager = SingleQueryManager::new(
-            test_db.clone(),
-            channel.0,
-            Arc::new(DatabaseConfig::default()),
-            Arc::new(FileDescriptorManager::new(2500)),
-        );
-
-        let tbl = Table::new("users")
-            .add_column(Column::new("user_id", DataTypes::String))
-            .add_column(Column::new("user_email", DataTypes::String))
-            .add_column(Column::new("user_country", DataTypes::String))
-            .add_column(Column::new("user_age", DataTypes::String))
-            .add_column(Column::new("user_name", DataTypes::String))
-            .add_index(Index {
-                name: "user_id_indx".to_string(),
-                members: vec![String::from("user_id")],
-                index_type: IndexType::Hash,
-            })
-            .add_index(Index {
-                name: "user_email_indx".to_string(),
-                members: vec![String::from("user_email")],
-                index_type: IndexType::Hash,
-            })
-            .add_index(Index {
-                name: "user_country_indx".to_string(),
-                members: vec![String::from("user_country")],
-                index_type: IndexType::Hash,
-            })
-            .add_index(Index {
-                name: "user_age_indx".to_string(),
-                members: vec![String::from("user_age")],
-                index_type: IndexType::Hash,
-            })
-            .add_index(Index {
-                name: "user_name_indx".to_string(),
-                members: vec![String::from("user_name")],
-                index_type: IndexType::Hash,
-            })
-            .add_index(Index {
-                name: "age_country_indx".to_string(),
-                members: vec![String::from("user_age"), String::from("user_country")],
-                index_type: IndexType::Hash,
-            });
-
-        query_manager.register_table(tbl);
+        let query_manager = register_user_tbl();
 
         let table = query_manager.get_table("users").unwrap();
 
@@ -375,7 +388,7 @@ mod test {
 
         let tbl = tables.get("users").unwrap();
 
-        tbl.temps.reconcile_all();
+        tbl.temps.reconcile().unwrap();
 
         let results = search_manager.search("users", &ops).unwrap();
         let row_0 = &results[0];
@@ -390,6 +403,58 @@ mod test {
         vals.sort();
         assert_eq!(vals[0], "Door");
         assert_eq!(vals[1], "Luis");
+    }
+
+    fn register_user_tbl() -> SingleQueryManager<RowJson> {
+        let test_db = Uuid::new_v4().to_string();
+        let db_folder = create_scheme_js_db(None, test_db.as_str());
+        let channel = create_helper_channel(1);
+        let query_manager = SingleQueryManager::new(
+            test_db.clone(),
+            channel.0,
+            Arc::new(DatabaseConfig::default()),
+            Arc::new(FileDescriptorManager::new(2500)),
+        );
+
+        let tbl = Table::new("users")
+            .add_column(Column::new("user_id", DataTypes::String))
+            .add_column(Column::new("user_email", DataTypes::String))
+            .add_column(Column::new("user_country", DataTypes::String))
+            .add_column(Column::new("user_age", DataTypes::String))
+            .add_column(Column::new("user_name", DataTypes::String))
+            .add_index(Index {
+                name: "user_id_indx".to_string(),
+                members: vec![String::from("user_id")],
+                index_type: IndexType::Hash,
+            })
+            .add_index(Index {
+                name: "user_email_indx".to_string(),
+                members: vec![String::from("user_email")],
+                index_type: IndexType::Hash,
+            })
+            .add_index(Index {
+                name: "user_country_indx".to_string(),
+                members: vec![String::from("user_country")],
+                index_type: IndexType::Hash,
+            })
+            .add_index(Index {
+                name: "user_age_indx".to_string(),
+                members: vec![String::from("user_age")],
+                index_type: IndexType::Hash,
+            })
+            .add_index(Index {
+                name: "user_name_indx".to_string(),
+                members: vec![String::from("user_name")],
+                index_type: IndexType::Hash,
+            })
+            .add_index(Index {
+                name: "age_country_indx".to_string(),
+                members: vec![String::from("user_age"), String::from("user_country")],
+                index_type: IndexType::Hash,
+            });
+
+        query_manager.register_table(tbl);
+        query_manager
     }
 
     fn get_user_table_for_drop_test() -> Table {
@@ -440,7 +505,7 @@ mod test {
 
             let tbl = tables.get("users").unwrap();
 
-            tbl.temps.reconcile_all();
+            tbl.temps.reconcile().unwrap();
 
             let results = search_manager.search("users", &ops).unwrap();
             let row_0 = &results[0];
@@ -484,5 +549,157 @@ mod test {
                 DataValue::String("1".to_string())
             );
         }
+    }
+
+    #[tokio::test]
+    pub async fn test_search_with_deleted_rows() {
+        let query_manager = register_user_tbl();
+
+        let table = query_manager.get_table("users").unwrap();
+
+        let row_1 = query_manager
+            .insert(create_row(
+                table.clone(),
+                serde_json::json!({
+                    "_uid": "0874d926-52a9-43e7-b682-9d7c5ec62b30",
+                    "user_id": "1",
+                    "user_email": "email@outlook.com",
+                    "user_country": "US",
+                    "user_age": "20",
+                    "user_name": "andreespirela"
+                }),
+            ))
+            .unwrap();
+
+        let user_table = query_manager.tables.get("users").unwrap();
+
+        // Reconcile data
+        user_table.temps.reconcile().unwrap();
+
+        let tables = query_manager.tables.clone();
+        let search_manager = QuerySearchManager::new(tables.clone());
+        let ops = QueryOps::Or(vec![QueryOps::And(vec![QueryOps::Condition(QueryVal {
+            key: "user_id".to_string(),
+            filter_type: "=".to_string(),
+            value: DataValue::String("1".to_string()),
+        })])]);
+
+        let results = search_manager.search("users", &ops).unwrap();
+        let row_0 = &results[0];
+        assert_eq!(row_0.global_index, 0);
+
+        query_manager
+            .delete("users", &[row_0.global_index as u64])
+            .unwrap();
+
+        // Reconcile data (delete op)
+        user_table.temps.reconcile().unwrap();
+
+        let results = search_manager.search("users", &ops).unwrap();
+        let row_0 = &results.get(0);
+        assert!(row_0.is_none());
+    }
+
+    #[tokio::test]
+    pub async fn test_search_with_moved_rows() {
+        let query_manager = register_user_tbl();
+
+        let table = query_manager.get_table("users").unwrap();
+
+        let row_1 = query_manager
+            .insert(create_row(
+                table.clone(),
+                serde_json::json!({
+                    "_uid": "0874d926-52a9-43e7-b682-9d7c5ec62b30",
+                    "user_id": "1",
+                    "user_email": "email@outlook.com",
+                    "user_country": "US",
+                    "user_age": "20",
+                    "user_name": "andreespirela"
+                }),
+            ))
+            .unwrap();
+
+        let user_table = query_manager.tables.get("users").unwrap();
+
+        // Reconcile data
+        user_table.temps.reconcile().unwrap();
+
+        let tables = query_manager.tables.clone();
+        let search_manager = QuerySearchManager::new(tables.clone());
+        let ops = QueryOps::Or(vec![QueryOps::And(vec![QueryOps::Condition(QueryVal {
+            key: "user_id".to_string(),
+            filter_type: "=".to_string(),
+            value: DataValue::String("1".to_string()),
+        })])]);
+
+        let results = search_manager.search("users", &ops).unwrap();
+        let row_0 = &results[0];
+        let col = user_table.table.get_column("user_name").unwrap();
+        assert_eq!(row_0.global_index, 0);
+        let initial_user_name = row_0.get_value(col).unwrap().to_string();
+        assert_eq!(initial_user_name, "andreespirela");
+
+        query_manager
+            .update("users", &[(row_0.global_index as u64, create_row(
+                table.clone(),
+                serde_json::json!({
+                    "_uid": "0874d926-52a9-43e7-b682-9d7c5ec62b30",
+                    "user_id": "1",
+                    "user_email": "email@outlook.com",
+                    "user_country": "US",
+                    "user_age": "20",
+                    "user_name": "The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item"
+                }),
+            ))])
+            .unwrap();
+
+        // Reconcile data (update op)
+        user_table.temps.reconcile().unwrap();
+
+        let results = search_manager.search("users", &ops).unwrap();
+        let row_0 = &results.get(0);
+        assert!(row_0.is_some());
+        let row_0 = row_0.unwrap();
+        let col = user_table.table.get_column("user_name").unwrap();
+        let new_user_name = row_0.get_value(col).unwrap().to_string();
+        assert_eq!(
+            new_user_name,
+            "The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item\
+                    The.longest.username.known.to.mankind.so.that.the.shard.can.move.the.item"
+        );
     }
 }

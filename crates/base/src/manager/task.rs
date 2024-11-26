@@ -24,16 +24,23 @@ pub struct Task {
     pub id: String,
     pub func: TaskCallback,
     pub duration: TaskDuration,
-    pub cancellation_token: CancellationToken,
+    pub cancellation_token: Arc<CancellationToken>,
+    pub loop_execution: bool,
 }
 
 impl Task {
-    pub fn new(id: String, func: TaskSignature, task_duration: TaskDuration) -> Self {
+    pub fn new(
+        id: String,
+        func: TaskSignature,
+        task_duration: TaskDuration,
+        loop_execution: bool,
+    ) -> Self {
         Self {
             id,
             func: TaskCallback { cb: Arc::new(func) },
             duration: task_duration,
-            cancellation_token: CancellationToken::new(),
+            cancellation_token: Arc::new(CancellationToken::new()),
+            loop_execution,
         }
     }
 }

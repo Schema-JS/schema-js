@@ -25,6 +25,7 @@ tempfile.workspace = true
 schemajs_index = { version = "0.1.0", path = "../index" }
 schemajs_config = { version = "0.1.0", path = "../config" }
 parking_lot.workspace = true
+log = "0.4.22"
 
 [dev-dependencies]
 flaky_test.workspace = true

@@ -1,14 +1,17 @@
+pub mod table_commit_log_collection;
 pub mod table_shard;
 
 use crate::errors::QueryError;
+use crate::managers::query_result::{DeleteResult, InsertResult, QueryResult, UpdateResult};
 use crate::managers::single::table_shard::TableShard;
 use crate::row::Row;
 use crate::search::search_manager::QuerySearchManager;
 use chashmap::CHashMap;
+use log::debug;
 use schemajs_config::DatabaseConfig;
 use schemajs_data::fdm::FileDescriptorManager;
+use schemajs_data::shard::insert_item::InsertItem;
 use schemajs_data::shard::shards::data_shard::config::TempDataShardConfig;
-use schemajs_data::shard::temp_map_shard::DataWithIndex;
 use schemajs_data::temp_offset_types::TempOffsetTypes;
 use schemajs_helpers::helper::HelperCall;
 use schemajs_primitives::column::types::DataValue;
@@ -18,6 +21,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
 
@@ -139,7 +143,7 @@ impl<T: Row> SingleQueryManager<T> {
         &self,
         data: Vec<(String, HashMap<String, DataValue>)>,
         master_insert: bool,
-    ) -> Result<Option<Uuid>, QueryError> {
+    ) -> Result<QueryResult, QueryError> {
         let mut rows: Vec<T> = data
             .into_iter()
             .map(|e| {
@@ -149,7 +153,7 @@ impl<T: Row> SingleQueryManager<T> {
                     .ok_or_else(|| QueryError::InvalidTable(e.0.clone()))?
                     .table
                     .clone();
-                T::from_map(table, e.1).map_err(|_| QueryError::InvalidInsertion)
+                T::from_map(table, e.1, 0).map_err(|_| QueryError::InvalidInsertion)
             })
             .collect::<Result<Vec<_>, _>>()?;
         self.raw_insert(&mut rows, master_insert)
@@ -187,7 +191,7 @@ impl<T: Row> SingleQueryManager<T> {
     ///
     /// `SingleQueryManager` will require a folder to be created for `database-name` otherwise it will panic.
     /// For a reference on how this is plugged: crates/query/src/search/search_manager.rs#test_search_manager
-    pub fn insert(&self, row: T) -> Result<Option<Uuid>, QueryError> {
+    pub fn insert(&self, row: T) -> Result<QueryResult, QueryError> {
         self.raw_insert(&mut [row], false)
     }
 
@@ -195,7 +199,8 @@ impl<T: Row> SingleQueryManager<T> {
         &self,
         rows: &mut [T],
         master_insert: bool,
-    ) -> Result<Option<Uuid>, QueryError> {
+    ) -> Result<QueryResult, QueryError> {
+        let instant = Instant::now();
         let rows_len = rows.len();
         let mut table_inserts: HashMap<String, Vec<Vec<u8>>> = HashMap::new();
         let mut id = None;
@@ -231,18 +236,30 @@ impl<T: Row> SingleQueryManager<T> {
             if let Some(table_shard) = self.tables.get(&table_name) {
                 let vec_of_slices: Vec<&[u8]> = rows.iter().map(|v| v.as_slice()).collect();
                 if !master_insert {
-                    table_shard.temps.insert(&vec_of_slices)?;
+                    table_shard
+                        .temps
+                        .insert(&vec_of_slices)
+                        .map(|e| {
+                            QueryResult::Insert(InsertResult {
+                                last_uuid: id,
+                                succeeded: e.is_succeeded(),
+                                failed_items: e.get_failed_items(),
+                                duration: instant.elapsed(),
+                            })
+                        })
+                        .map_err(|e| QueryError::from(e))?;
                 } else {
                     let mut data_lock = table_shard.data.write();
 
                     for row in vec_of_slices {
-                        let pointer = data_lock.insert_rows(&[row]);
+                        let pointer =
+                            data_lock.insert_rows(&[InsertItem::new(row, Uuid::new_v4())]);
 
                         TableShard::<T>::insert_indexes(
                             table_shard.table.clone(),
                             table_shard.indexes.clone(),
                             vec![(
-                                T::from_slice(row, table_shard.table.clone()),
+                                T::from_slice(row, table_shard.table.clone(), pointer),
                                 pointer as u64,
                             )],
                         );
@@ -253,7 +270,66 @@ impl<T: Row> SingleQueryManager<T> {
             }
         }
 
-        Ok(id)
+        Ok(QueryResult::Insert(InsertResult {
+            last_uuid: id,
+            succeeded: true,
+            failed_items: vec![],
+            duration: instant.elapsed(),
+        }))
+    }
+
+    pub fn delete(&self, tbl_name: &str, row_indexes: &[u64]) -> Result<QueryResult, QueryError> {
+        let instant = Instant::now();
+        return if let Some(table_shard) = self.tables.get(tbl_name) {
+            Ok(table_shard
+                .temps
+                .delete(row_indexes)
+                .map(|result| {
+                    QueryResult::Delete(DeleteResult {
+                        succeeded: result.is_succeeded(),
+                        failed_items: result.get_failed_items(),
+                        duration: instant.elapsed(),
+                    })
+                })
+                .map_err(|e| QueryError::from(e))?)
+        } else {
+            Err(QueryError::InvalidTable(tbl_name.to_string()))
+        };
+    }
+
+    pub fn update(&self, tbl_name: &str, data: &[(u64, T)]) -> Result<QueryResult, QueryError> {
+        let processed_rows: Vec<(u64, Vec<u8>)> = data
+            .iter()
+            .filter_map(|update_data| {
+                let row = &update_data.1;
+                match row.to_vec() {
+                    Ok(row_bytes) => Some((update_data.0, row_bytes)), // Success case
+                    Err(_) => None, // Handle error by skipping (or you could collect errors here)
+                }
+            })
+            .collect();
+
+        let update_data: Vec<(u64, &[u8])> = processed_rows
+            .iter()
+            .map(|row| (row.0, row.1.as_slice()))
+            .collect();
+
+        let instant = Instant::now();
+        return if let Some(table_shard) = self.tables.get(tbl_name) {
+            Ok(table_shard
+                .temps
+                .update(&update_data)
+                .map(|result| {
+                    QueryResult::Update(UpdateResult {
+                        succeeded: result.is_succeeded(),
+                        failed_items: result.get_failed_items(),
+                        duration: instant.elapsed(),
+                    })
+                })
+                .map_err(|e| QueryError::from(e))?)
+        } else {
+            Err(QueryError::InvalidTable(tbl_name.to_string()))
+        };
     }
 
     pub fn get_table(&self, table_name: &str) -> Option<Arc<Table>> {

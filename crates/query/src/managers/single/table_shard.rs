@@ -6,7 +6,9 @@ use schemajs_data::fdm::FileDescriptorManager;
 use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::data_shard::config::{DataShardConfig, TempDataShardConfig};
 use schemajs_data::shard::shards::data_shard::shard::DataShard;
-use schemajs_data::shard::temp_collection::TempCollection;
+
+use crate::managers::single::table_commit_log_collection::TableCommitLogCollection;
+use schemajs_data::commit_log::collection::CommitLogCollection;
 use schemajs_dirs::create_schema_js_table;
 use schemajs_helpers::helper::{HelperCall, HelperDbContext};
 use schemajs_index::composite_key::CompositeKey;
@@ -46,7 +48,7 @@ pub struct TableShard<T: Row> {
     pub table: Arc<Table>,
     pub scheme: String,
     pub data: Arc<RwLock<MapShard<DataShard, DataShardConfig>>>,
-    pub temps: TempCollection<DataShard, DataShardConfig, TempDataShardConfig>,
+    pub temps: Arc<TableCommitLogCollection>,
     pub indexes: Arc<CHashMap<String, IndexTypeValue>>,
     _marker: PhantomData<T>,
     helper_tx: Sender<HelperCall>,
@@ -92,13 +94,13 @@ impl<T: Row> TableShard<T> {
             std::fs::create_dir_all(temps_folder.clone()).unwrap();
         }
 
-        let temp_collection = TempCollection::new(
+        let mut commit_log_collection = TableCommitLogCollection::new(
             refs.clone(),
-            db_config.max_temporary_shards,
             temps_folder,
-            "temp_",
-            temp_config,
-            fdm.clone(),
+            "temp",
+            db_config.max_temporary_shards as usize,
+            (1024 * 1024) * 1024, // 1GB
+            (1024 * 1024) * 5,    // 5mb
         );
 
         let mut indexes = CHashMap::new();
@@ -122,65 +124,72 @@ impl<T: Row> TableShard<T> {
             indexes.insert(index.name.clone(), index_obj);
         }
 
+        let indexes = Arc::new(indexes);
+        let table = Arc::new(table);
+
+        Self::init_reconcile_hook(
+            &mut commit_log_collection,
+            indexes.clone(),
+            table.clone(),
+            helper_tx.clone(),
+            scheme.to_string(),
+        );
+
         let mut tbl_shard = Self {
-            indexes: Arc::new(indexes),
+            table,
+            indexes,
             data: refs.clone(),
-            table: Arc::new(table),
-            temps: temp_collection,
+            temps: Arc::new(commit_log_collection),
             _marker: PhantomData,
             helper_tx,
             scheme: scheme.to_string(),
         };
 
-        tbl_shard.init();
-
         tbl_shard
     }
 
-    /// Initializes everything related to the current table context.
-    /// Such as loading the indexes
-    /// Setting the reconciliation callbacks
-    /// and potentially future logic related to table loading.
-    pub fn init(&mut self) {
-        let indexes = self.indexes.clone();
+    fn init_reconcile_hook(
+        tbl_collection: &mut TableCommitLogCollection,
+        indexes: Arc<CHashMap<String, IndexTypeValue>>,
+        table: Arc<Table>,
+        helper_tx: Sender<HelperCall>,
+        scheme_name: String,
+    ) {
+        tbl_collection.set_on_reconcile(Box::new(move |rows| {
+            let rows: Vec<(T, u64)> = rows
+                .into_iter()
+                .map(|row| {
+                    (
+                        T::from_slice(&row.data, table.clone(), row.index as usize),
+                        row.index,
+                    )
+                })
+                .collect();
 
-        for temp_shard in self.temps.temps.iter() {
-            let indexes = indexes.clone();
-            let table = self.table.clone();
-            let scheme_name = self.scheme.clone();
-            let helper_tx = self.helper_tx.clone();
-
-            temp_shard.write().set_on_reconcile(Box::new(move |rows| {
-                let rows: Vec<(T, u64)> = rows
-                    .into_iter()
-                    .map(|row| (T::from_slice(&row.data, table.clone()), row.index))
+            {
+                // TODO: move row->to_json inside the thread
+                let vals: Vec<Value> = rows
+                    .iter()
+                    .filter_map(|(row, _)| row.to_json().ok())
                     .collect();
-
-                {
-                    // TODO: move row->to_json inside the thread
-                    let vals: Vec<Value> = rows
-                        .iter()
-                        .filter_map(|(row, _)| row.to_json().ok())
-                        .collect();
-                    let helper_tx = helper_tx.clone();
-                    let tbl_name = table.name.clone();
-                    let scheme = scheme_name.clone();
-                    tokio::spawn(async move {
-                        let _ = helper_tx
-                            .send(HelperCall::InsertHook {
-                                rows: vals,
-                                db_ctx: HelperDbContext {
-                                    db: Some(scheme),
-                                    table: Some(tbl_name),
-                                },
-                            })
-                            .await;
-                    });
-                }
-                Self::insert_indexes(table.clone(), indexes.clone(), rows);
-                Ok(())
-            }))
-        }
+                let helper_tx = helper_tx.clone();
+                let tbl_name = table.name.clone();
+                let scheme = scheme_name.clone();
+                tokio::spawn(async move {
+                    let _ = helper_tx
+                        .send(HelperCall::InsertHook {
+                            rows: vals,
+                            db_ctx: HelperDbContext {
+                                db: Some(scheme),
+                                table: Some(tbl_name),
+                            },
+                        })
+                        .await;
+                });
+            }
+            Self::insert_indexes(table.clone(), indexes.clone(), rows);
+            Ok(())
+        }));
     }
 
     /// This method handles automatically indexing the rows that match the index in the Table.

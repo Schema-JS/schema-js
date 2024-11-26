@@ -151,6 +151,7 @@ mod test {
                         comment: None,
                         primary_key: false,
                         default_index: Some(true),
+                        is_internal: false,
                     },
                 );
 
@@ -164,6 +165,7 @@ mod test {
                         comment: None,
                         primary_key: false,
                         default_index: Some(false),
+                        is_internal: false,
                     },
                 );
 
@@ -196,6 +198,7 @@ mod test {
                             "id": "1"
                         }),
                         tbl,
+                        0,
                     )
                     .unwrap(),
                 )
@@ -215,6 +218,7 @@ mod test {
                             "id": "2"
                         }),
                         tbl,
+                        0,
                     )
                     .unwrap(),
                 )
@@ -229,13 +233,13 @@ mod test {
             let mut reader = db_engine.write().unwrap();
             let mut db = reader.find_by_name_ref("rust-test-random").unwrap();
             let tbl = db.query_manager.tables.get("users").unwrap();
-            tbl.temps.reconcile_all();
+            tbl.temps.reconcile().unwrap();
 
             let a = tbl.data.read().get_element(0).unwrap();
             let b = tbl.data.read().get_element(1).unwrap();
 
-            let a = RowJson::from_slice(a.as_slice(), tbl.table.clone());
-            let b = RowJson::from_slice(b.as_slice(), tbl.table.clone());
+            let a = RowJson::from_slice(a.get_used_data(), tbl.table.clone(), 0);
+            let b = RowJson::from_slice(b.get_used_data(), tbl.table.clone(), 1);
 
             let a_val = a
                 .get_value(tbl.table.get_column("id").unwrap())

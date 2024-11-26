@@ -29,6 +29,7 @@ pub struct RowData {
 pub struct RowJson {
     pub table: Arc<Table>,
     pub values: RowData,
+    pub global_index: usize,
 }
 
 impl Row for RowJson {
@@ -48,24 +49,31 @@ impl Row for RowJson {
         Ok(self.values.value.clone())
     }
 
-    fn from_slice(slice: &[u8], table: Arc<Table>) -> Self {
+    fn from_slice(slice: &[u8], table: Arc<Table>, global_index: usize) -> Self {
         RowJson {
             table,
             values: serde_json::from_slice(slice).unwrap(),
+            global_index,
         }
     }
 
-    fn from_data(data: Self::RowData, table: Arc<Table>) -> Self {
+    fn from_data(data: Self::RowData, table: Arc<Table>, global_index: usize) -> Self {
         RowJson {
             table,
             values: data,
+            global_index,
         }
     }
 
-    fn from_map(table: Arc<Table>, data: HashMap<String, DataValue>) -> Result<Self, ()> {
+    fn from_map(
+        table: Arc<Table>,
+        data: HashMap<String, DataValue>,
+        global_index: usize,
+    ) -> Result<Self, ()> {
         Ok(RowJson {
             table,
             values: RowData { value: data },
+            global_index,
         })
     }
 
@@ -118,6 +126,7 @@ mod row_tests {
                 "id": "123"
             }),
             arc_tbl.clone(),
+            0,
         )
         .unwrap();
     }

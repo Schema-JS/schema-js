@@ -1,21 +1,27 @@
 use crate::errors::ShardErrors;
 use crate::fdm::FileDescriptorManager;
+use crate::shard::insert_item::InsertItem;
+use crate::shard::item_type::ShardItem;
 use crate::shard::{AvailableSpace, Shard, ShardConfig};
 use crate::utils::fs::list_files_with_prefix;
 use indexmap::IndexMap;
 use parking_lot::RwLock;
+use std::collections::HashMap;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct MapShard<S: Shard<Opts>, Opts: ShardConfig> {
-    pub current_master_shard: S,
-    pub past_master_shards: RwLock<IndexMap<String, S>>,
+    pub current_master_shard: Arc<S>,
+    pub past_master_shards: RwLock<IndexMap<String, Arc<S>>>,
     pub shard_prefix: String,
     pub shards_folder: PathBuf,
     config: Opts,
     fdm: Arc<FileDescriptorManager>,
+    all_shards: Vec<Arc<S>>,
 }
 
 impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
@@ -56,28 +62,31 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
             if path != &current_master_shard {
                 past_master_shards.insert(
                     uuid.clone(),
-                    S::new(
+                    Arc::new(S::new(
                         path.clone(),
                         config.clone(),
                         Some(Uuid::parse_str(uuid).unwrap()),
                         fdm.clone(),
-                    ),
+                    )),
                 );
             }
         }
 
+        let current_master_shard = Arc::new(S::new(
+            current_master_shard,
+            config.clone(),
+            Some(maybe_new_shard_id),
+            fdm.clone(),
+        ));
+
         MapShard {
-            current_master_shard: S::new(
-                current_master_shard,
-                config.clone(),
-                Some(maybe_new_shard_id),
-                fdm.clone(),
-            ),
+            current_master_shard: current_master_shard.clone(),
             past_master_shards: RwLock::new(past_master_shards),
             shard_prefix: shard_prefix.to_string(),
             shards_folder,
             config,
             fdm,
+            all_shards: vec![current_master_shard.clone()],
         }
     }
 
@@ -108,11 +117,88 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
         Some((number, uuid, path))
     }
 
-    pub fn insert_rows(&mut self, data: &[&[u8]]) -> usize {
+    pub fn insert_rows(&mut self, data: &[InsertItem]) -> usize {
         self.raw_insert_rows(data, false)
     }
 
-    pub fn raw_insert_rows(&mut self, data: &[&[u8]], create_new_shard: bool) -> usize {
+    pub fn delete_items(&self, data: &[u64]) {
+        let breaking_point = self.breaking_point();
+
+        match breaking_point {
+            None => self.current_master_shard.remove_items(data).unwrap(),
+            Some(_) => {
+                let mut grouped_indexes = HashMap::new();
+
+                for &index in data {
+                    match self.get_shard_by_global_item_index(index as usize) {
+                        Ok((shard, index)) => {
+                            grouped_indexes
+                                .entry(shard.get_id())
+                                .or_insert_with(|| (shard, vec![]))
+                                .1
+                                .push(index as u64);
+                        }
+                        Err(_) => continue,
+                    };
+                }
+
+                for (_, (shard, indexes)) in grouped_indexes {
+                    shard.remove_items(&indexes).unwrap()
+                }
+            }
+        }
+    }
+
+    pub fn update_items(&mut self, data: Vec<(u64, &[u8])>) {
+        let breaking_point = self.breaking_point();
+
+        match breaking_point {
+            None => {
+                // No breaking point; update items in the current master shard
+                let master_shard = self.current_master_shard.clone();
+                master_shard.update_items(data, self).unwrap();
+            }
+            Some(bp) => {
+                // Group data by their respective shards based on the breaking point
+                let mut grouped_shards: HashMap<String, (Arc<S>, Vec<(u64, &[u8])>)> =
+                    HashMap::new();
+
+                for (global_index, item_data) in data {
+                    if let Ok((shard, local_index)) =
+                        self.get_shard_by_global_item_index(global_index as usize)
+                    {
+                        grouped_shards
+                            .entry(shard.get_id())
+                            .or_insert_with(|| (shard, Vec::new()))
+                            .1
+                            .push((local_index as u64, item_data));
+                    }
+                }
+
+                // Update items in each shard
+                for (_, (shard, shard_data)) in grouped_shards {
+                    shard.update_items(shard_data, self).unwrap();
+                }
+            }
+        }
+    }
+
+    fn insert_past_shard(&mut self, shard: Arc<S>) {
+        let mut past_ms_writer = self.past_master_shards.write();
+        let (_, shard_id, _) = Self::extract_shard_signature(shard.get_path()).unwrap();
+        past_ms_writer.insert(shard_id, shard);
+
+        let shard_reversed = {
+            let mut combined_shards: Vec<Arc<S>> =
+                past_ms_writer.values().rev().map(|e| e.clone()).collect();
+            combined_shards.push(self.current_master_shard.clone());
+            combined_shards
+        };
+
+        self.all_shards = shard_reversed;
+    }
+
+    pub fn raw_insert_rows(&mut self, data: &[InsertItem], create_new_shard: bool) -> usize {
         if create_new_shard {
             let (shard_number, _, _) =
                 Self::extract_shard_signature(self.current_master_shard.get_path().clone())
@@ -137,11 +223,8 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
 
             // Add to past master
             {
-                let old_master = std::mem::replace(&mut self.current_master_shard, shard);
-                let mut past_ms_writer = self.past_master_shards.write();
-                let (_, shard_id, _) =
-                    Self::extract_shard_signature(old_master.get_path()).unwrap();
-                past_ms_writer.insert(shard_id, old_master);
+                let old_master = std::mem::replace(&mut self.current_master_shard, Arc::new(shard));
+                self.insert_past_shard(old_master);
             }
         }
 
@@ -183,39 +266,60 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
         }
     }
 
-    fn breaking_point(&self) -> Option<u64> {
+    pub fn breaking_point(&self) -> Option<u64> {
         self.current_master_shard.breaking_point()
     }
 
     pub fn get_element_from_specific(
         &self,
-        shard: &S,
+        shard: &Arc<S>,
         index: usize,
-    ) -> Result<Vec<u8>, ShardErrors> {
+    ) -> Result<ShardItem, ShardErrors> {
         shard.read_item_from_index(index)
     }
 
-    pub fn get_element_from_master(&self, index: usize) -> Result<Vec<u8>, ShardErrors> {
+    pub fn get_element_from_master(&self, index: usize) -> Result<ShardItem, ShardErrors> {
         self.get_element_from_specific(&self.current_master_shard, index)
     }
 
-    pub fn get_element(&self, index: usize) -> Result<Vec<u8>, ShardErrors> {
-        let breaking_point = self.breaking_point();
+    pub fn get_element(&self, index: usize) -> Result<ShardItem, ShardErrors> {
+        let (shard, local_index) = self.get_shard_by_global_item_index(index)?;
+        self.get_element_from_specific(&shard, local_index)
+    }
 
-        match breaking_point {
-            None => self.get_element_from_master(index),
+    pub fn get_last_index(&self) -> usize {
+        let last_master_index = self.current_master_shard.get_last_index();
+        let last_master_index = if last_master_index < 0 {
+            0usize
+        } else {
+            last_master_index as usize
+        };
+
+        match self.breaking_point() {
+            None => last_master_index,
+            Some(breaking_point) => {
+                let past_count = self.all_shards.len() - 1;
+                let total_indexes = past_count * (breaking_point as usize);
+                total_indexes + last_master_index
+            }
+        }
+    }
+
+    pub fn get_last_global_element(&self) -> Result<ShardItem, ShardErrors> {
+        self.get_element(self.get_last_index())
+    }
+
+    pub fn get_shard_by_global_item_index(
+        &self,
+        index: usize,
+    ) -> Result<(Arc<S>, usize), ShardErrors> {
+        match self.breaking_point() {
+            None => Ok((self.current_master_shard.clone(), index)),
             Some(breaking_point) => {
                 let breaking_point_usize = breaking_point as usize;
 
-                let reader = self.past_master_shards.read();
-                let shard_reversed = {
-                    let mut combined_shards: Vec<&S> = reader.values().rev().collect();
-                    combined_shards.push(&self.current_master_shard);
-                    combined_shards
-                };
-
                 // Calculate the total number of shards
-                let num_shards = shard_reversed.len();
+                let num_shards = self.all_shards.len();
                 // Determine which shard the index belongs to
                 let shard_index = index / breaking_point_usize;
 
@@ -225,16 +329,30 @@ impl<S: Shard<Opts>, Opts: ShardConfig> MapShard<S, Opts> {
 
                 // Calculate the local index within the selected shard
                 let local_index = index % breaking_point_usize;
-
-                self.get_element_from_specific(shard_reversed[shard_index], local_index)
+                Ok((self.all_shards[shard_index].clone(), local_index))
             }
         }
+    }
+
+    pub fn get_shard_item_ids_range(&self, range: Range<usize>) -> Vec<Uuid> {
+        // TODO: Refactor references, get_shard_by_global_item_index clones the reference, this logic is exhausting.
+        let mut ids = vec![];
+        for index in range {
+            if let Ok(el) = self.get_element(index) {
+                if el.shard_item_type.is_raw() {
+                    ids.push(el.current_item_id)
+                }
+            }
+        }
+
+        ids
     }
 }
 
 #[cfg(test)]
 mod test {
     use crate::fdm::FileDescriptorManager;
+    use crate::shard::insert_item::InsertItem;
     use crate::shard::map_shard::MapShard;
     use crate::shard::shards::data_shard::config::DataShardConfig;
     use crate::shard::shards::data_shard::shard::DataShard;
@@ -316,12 +434,16 @@ mod test {
 
         let ref_map1 = arc.clone();
         let thread1 = std::thread::spawn(move || {
-            ref_map1.write().insert_rows(&[&b"1".to_vec()]);
+            ref_map1
+                .write()
+                .insert_rows(&[InsertItem::new(b"1", Uuid::new_v4())]);
         });
 
         let ref_map1 = arc.clone();
         let thread2 = std::thread::spawn(move || {
-            ref_map1.write().insert_rows(&[&b"2".to_vec()]);
+            ref_map1
+                .write()
+                .insert_rows(&[InsertItem::new(b"2", Uuid::new_v4())]);
         });
 
         thread1.join().unwrap();
@@ -344,7 +466,7 @@ mod test {
             .unwrap();
 
         // Collect the items and sort them
-        let mut items = vec![item1, item2];
+        let mut items = vec![item1.get_used_data(), item2.get_used_data()];
         items.sort();
 
         assert_eq!(items, vec![b"1".to_vec(), b"2".to_vec()]);
@@ -370,12 +492,99 @@ mod test {
         );
 
         context.insert_rows(&[
-            &b"1".to_vec(),
-            &b"2".to_vec(),
-            &b"3".to_vec(),
-            &b"4".to_vec(),
+            InsertItem::new(b"1", Uuid::new_v4()),
+            InsertItem::new(b"2", Uuid::new_v4()),
+            InsertItem::new(b"3", Uuid::new_v4()),
+            InsertItem::new(b"4", Uuid::new_v4()),
         ]);
 
         context.get_element(3).unwrap();
+
+        // test last element
+        assert_eq!(
+            context.get_last_global_element().unwrap().get_used_data(),
+            b"4"
+        );
+    }
+
+    #[tokio::test]
+    pub async fn test_global_delete_element() {
+        let fake_partial_folder_path = std::env::current_dir().unwrap().join(format!(
+            "./test_cases/fake-db-folder/{}",
+            Uuid::new_v4().to_string()
+        ));
+        std::fs::create_dir(&fake_partial_folder_path).unwrap();
+
+        let mut context = MapShard::<DataShard, DataShardConfig>::new(
+            fake_partial_folder_path.clone(),
+            "data_",
+            DataShardConfig {
+                max_offsets: Some(1),
+            },
+            Arc::new(FileDescriptorManager::new(2500)),
+        );
+
+        context.insert_rows(&[
+            InsertItem::new(b"1", Uuid::new_v4()),
+            InsertItem::new(b"2", Uuid::new_v4()),
+            InsertItem::new(b"3", Uuid::new_v4()),
+            InsertItem::new(b"4", Uuid::new_v4()),
+        ]);
+
+        let a = context.get_element(2).unwrap();
+
+        context.delete_items(&[2]);
+
+        let b = context.get_element(2).unwrap();
+
+        assert!(a.shard_item_type.is_raw());
+        assert!(b.shard_item_type.is_deleted());
+
+        let i1 = context.get_element(0).unwrap();
+        let i2 = context.get_element(1).unwrap();
+        let i4 = context.get_element(3).unwrap();
+        assert!(i1.shard_item_type.is_raw());
+        assert!(i2.shard_item_type.is_raw());
+        assert!(i4.shard_item_type.is_raw());
+    }
+
+    #[tokio::test]
+    pub async fn test_update_element() {
+        let fake_partial_folder_path = std::env::current_dir().unwrap().join(format!(
+            "./test_cases/fake-db-folder/{}",
+            Uuid::new_v4().to_string()
+        ));
+        std::fs::create_dir(&fake_partial_folder_path).unwrap();
+
+        let mut context = MapShard::<DataShard, DataShardConfig>::new(
+            fake_partial_folder_path.clone(),
+            "data_",
+            DataShardConfig {
+                max_offsets: Some(1),
+            },
+            Arc::new(FileDescriptorManager::new(2500)),
+        );
+
+        context.insert_rows(&[InsertItem::new(b"1", Uuid::new_v4())]);
+
+        let i1 = context.get_element(0).unwrap();
+        assert_eq!(i1.get_used_data(), b"1");
+
+        context.update_items(vec![(0, b"123")]);
+
+        let i1 = context.get_element(0).unwrap();
+        assert!(i1.shard_item_type.is_raw());
+        assert_eq!(i1.get_used_data(), b"123");
+
+        let new_data = i1.max_size;
+        let new_data: Vec<u8> = (0..(new_data + 1) as u8).collect();
+        context.update_items(vec![(0, &new_data)]);
+        let i1 = context.get_element(0).unwrap();
+        assert!(i1.shard_item_type.is_moved());
+        assert_eq!(i1.get_used_data(), b"123"); // Keeps the old data bc the new is moved into a new item
+        let global_indx = i1.moved_shard_index.unwrap();
+
+        let read = context.get_element(global_indx).unwrap();
+        assert_eq!(read.get_used_data(), new_data);
     }
 }

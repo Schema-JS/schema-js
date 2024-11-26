@@ -80,3 +80,83 @@ impl DataHandler {
         }
     }
 }
+
+#[cfg(test)]
+mod data_handler_tests {
+    use memmap2::MmapOptions;
+    use std::fs::{File, OpenOptions};
+    use std::io::Write;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+    use uuid::Uuid;
+
+    fn read_mmap(path: PathBuf) -> File {
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(path)
+            .unwrap()
+    }
+
+    #[tokio::test]
+    pub async fn test_mmap() {
+        let fake_partial_folder_path = std::env::current_dir()
+            .unwrap()
+            .join("./test_cases/mmap.bin".to_string());
+
+        {
+            let mut file = read_mmap(fake_partial_folder_path.clone());
+
+            file.write_all(b"Hello World").unwrap();
+            // Create a mutable memory-mapped buffer.
+            let mut mmap = unsafe { MmapOptions::new().map_mut(&file).unwrap() };
+            mmap[0] = b"X".get(0).unwrap().clone();
+
+            mmap.flush().unwrap();
+        }
+
+        let file = read_mmap(fake_partial_folder_path.clone());
+        let mut mmap = unsafe { MmapOptions::new().map_mut(&file).unwrap() };
+        assert_eq!(mmap.to_vec(), b"Xello World".to_vec());
+        let _ = std::fs::remove_file(fake_partial_folder_path);
+    }
+
+    #[tokio::test]
+    pub async fn test_mmap_2() {
+        let fake_partial_folder_path = std::env::current_dir()
+            .unwrap()
+            .join("test_cases/mmap2.bin");
+
+        // Ensure the test directory exists
+        std::fs::create_dir_all(fake_partial_folder_path.parent().unwrap()).unwrap();
+
+        {
+            let mut file = read_mmap(fake_partial_folder_path.clone());
+
+            // Resize the file to ensure it is at least 11 bytes long
+            file.set_len(11).unwrap();
+
+            // Write initial content to the file
+            file.write_all(b"Hello").unwrap();
+
+            // Create a mutable memory-mapped buffer
+            let mut mmap = unsafe { MmapOptions::new().map_mut(&file).unwrap() };
+
+            // Modify content via mmap
+            mmap[0] = b'X';
+            mmap[5..11].copy_from_slice(b"123456");
+
+            // Flush changes to disk
+            mmap.flush().unwrap();
+        }
+
+        // Verify the file content after modifications
+        let file = read_mmap(fake_partial_folder_path.clone());
+        let mmap = unsafe { MmapOptions::new().map_mut(&file).unwrap() };
+        assert_eq!(mmap.to_vec(), b"Xello123456".to_vec());
+
+        // Clean up the test file
+        let _ = std::fs::remove_file(fake_partial_folder_path);
+    }
+}

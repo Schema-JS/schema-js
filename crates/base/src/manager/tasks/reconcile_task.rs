@@ -1,7 +1,7 @@
 use crate::manager::task::Task;
 use crate::manager::task_duration::TaskDuration;
 use std::cell::LazyCell;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const RECONCILE_DB_TASK: LazyCell<Task> = LazyCell::new(|| {
     Task::new(
@@ -12,11 +12,12 @@ pub const RECONCILE_DB_TASK: LazyCell<Task> = LazyCell::new(|| {
                 let query_manager = &db.query_manager;
                 for table in query_manager.table_names.read().unwrap().iter() {
                     let table = query_manager.tables.get(table).unwrap();
-                    table.temps.reconcile_all();
+                    let _ = table.temps.reconcile();
                 }
             }
             Ok(())
         }),
         TaskDuration::Defined(Duration::from_millis(250)),
+        true,
     )
 });

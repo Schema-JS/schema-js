@@ -1,10 +1,13 @@
 use crate::data_handler::DataHandler;
 use crate::errors::ShardErrors;
 use crate::fdm::FileDescriptorManager;
+use crate::shard::insert_item::InsertItem;
+use crate::shard::item_type::ShardItem;
+use crate::shard::map_shard::MapShard;
 use crate::shard::shards::kv::config::KvShardConfig;
 use crate::shard::shards::kv::shard_header::KvShardHeader;
 use crate::shard::shards::kv::util::get_element_offset;
-use crate::shard::{AvailableSpace, Shard};
+use crate::shard::{AvailableSpace, Shard, ShardConfig};
 use crate::utils::flatten;
 use crate::utils::fs::write_at;
 use parking_lot::RwLock;
@@ -25,10 +28,12 @@ pub struct KvShard {
 }
 
 impl KvShard {
-    pub fn get_element(&self, index: usize) -> Option<Vec<u8>> {
+    pub fn get_element(&self, index: usize) -> Option<ShardItem> {
         let reader = self.data.read();
         let starting_point = Self::get_element_offset(index, self.value_size) as u64;
-        reader.read_pointer(starting_point, self.value_size)
+        reader
+            .read_pointer(starting_point, self.value_size)
+            .map(|e| ShardItem::from(e))
     }
 
     fn get_element_offset(index: usize, value_size: usize) -> usize {
@@ -39,17 +44,19 @@ impl KvShard {
         &self,
         file: &mut File,
         i: usize,
-        first_element: &[u8],
-        second_element: &[u8],
+        mut first_element: ShardItem,
+        mut second_element: ShardItem,
     ) -> Result<(), std::io::Error> {
+        second_element.current_offset = Self::get_element_offset(i, self.value_size);
+        first_element.current_offset = Self::get_element_offset(i - 1, self.value_size);
         write_at(
             file,
-            second_element,
+            &second_element.to_vec(),
             Self::get_element_offset(i, self.value_size) as u64,
         )?;
         write_at(
             file,
-            first_element,
+            &first_element.to_vec(),
             Self::get_element_offset(i - 1, self.value_size) as u64,
         )?;
         Ok(())
@@ -66,19 +73,21 @@ impl Shard<KvShardConfig> for KvShard {
         let data = unsafe { DataHandler::new(path.clone(), fdm).unwrap() };
         let data = Arc::new(data);
 
+        let val_size = ShardItem::calculate_size(&vec![0u8; opts.value_size]);
+
         let header = KvShardHeader::new_from_file(
             data.clone(),
             uuid,
             Some(0),
             opts.max_capacity,
-            opts.value_size as u64,
+            val_size as u64,
         );
 
         Self {
             path,
             data: data.clone(),
             max_capacity: header.max_capacity.unwrap_or(0) as usize,
-            value_size: header.value_size as usize,
+            value_size: val_size,
             id: header.id,
             header: RwLock::new(header),
         }
@@ -112,7 +121,7 @@ impl Shard<KvShardConfig> for KvShard {
             .map_or(-1, |v| v as i64)
     }
 
-    fn read_item_from_index(&self, index: usize) -> Result<Vec<u8>, ShardErrors> {
+    fn read_item_from_index(&self, index: usize) -> Result<ShardItem, ShardErrors> {
         match self.get_element(index) {
             None => Err(ShardErrors::UnknownEntry),
             Some(v) => Ok(v),
@@ -128,7 +137,7 @@ impl Shard<KvShardConfig> for KvShard {
         }
     }
 
-    fn insert_item(&self, data: &[&[u8]]) -> Result<u64, ShardErrors> {
+    fn insert_item(&self, data: &[InsertItem]) -> Result<u64, ShardErrors> {
         let mut writer = self.data.write();
         writer
             .operate(|file| {
@@ -136,7 +145,17 @@ impl Shard<KvShardConfig> for KvShard {
                     .seek(SeekFrom::End(0))
                     .expect("Failed to seek to end of file");
 
-                let flat_items = flatten(data);
+                let prepare_data: Vec<Vec<u8>> = data
+                    .iter()
+                    .map(|row| {
+                        ShardItem::new_complete(row.data, row.uuid, self.id.clone(), 0, false)
+                            .to_vec()
+                    })
+                    .collect();
+                let write_data: Vec<&[u8]> =
+                    prepare_data.iter().map(|row| row.as_slice()).collect();
+
+                let flat_items = flatten(write_data);
 
                 file.write_all(&flat_items)
                     .expect("Failed to write item to file");
@@ -155,6 +174,18 @@ impl Shard<KvShardConfig> for KvShard {
             .map_err(|_| ShardErrors::ErrorAddingEntry)
     }
 
+    fn update_items(
+        &self,
+        data: Vec<(u64, &[u8])>,
+        map_shard: &mut MapShard<Self, KvShardConfig>,
+    ) -> Result<(), ShardErrors> {
+        todo!()
+    }
+
+    fn remove_items(&self, offsets: &[u64]) -> Result<(), ShardErrors> {
+        todo!()
+    }
+
     fn get_id(&self) -> String {
         self.id.to_string()
     }
@@ -163,6 +194,7 @@ impl Shard<KvShardConfig> for KvShard {
 #[cfg(test)]
 mod test {
     use crate::fdm::FileDescriptorManager;
+    use crate::shard::insert_item::InsertItem;
     use crate::shard::shards::kv::config::KvShardConfig;
     use crate::shard::shards::kv::shard::KvShard;
     use crate::shard::Shard;
@@ -189,24 +221,24 @@ mod test {
 
         kv_shard
             .insert_item(&[
-                &"a".to_string().into_bytes(),
-                &"b".to_string().into_bytes(),
-                &"c".to_string().into_bytes(),
+                InsertItem::new(b"a", Uuid::new_v4()),
+                InsertItem::new(b"b", Uuid::new_v4()),
+                InsertItem::new(b"c", Uuid::new_v4()),
             ])
             .unwrap();
 
         assert_eq!(kv_shard.header.read().items_len, 3);
 
         assert_eq!(
-            kv_shard.get_element(1).unwrap(),
+            kv_shard.get_element(1).unwrap().get_used_data(),
             "b".to_string().into_bytes()
         );
         assert_eq!(
-            kv_shard.get_element(2).unwrap(),
+            kv_shard.get_element(2).unwrap().get_used_data(),
             "c".to_string().into_bytes()
         );
         assert_eq!(
-            kv_shard.get_element(0).unwrap(),
+            kv_shard.get_element(0).unwrap().get_used_data(),
             "a".to_string().into_bytes()
         );
 
