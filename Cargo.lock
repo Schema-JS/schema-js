@@ -286,6 +286,7 @@ dependencies = [
  "dashmap 6.1.0",
  "deno_ast",
  "deno_core",
+ "flaky_test",
  "lru",
  "once_cell",
  "parking_lot 0.12.3",

@@ -33,6 +33,7 @@ parking_lot.workspace = true
 
 [dev-dependencies]
 schemajs_query = { version = "0.1.0", path = "../query" }
+flaky_test.workspace = true
 
 [build-dependencies]
 schemajs_core = { version = "0.1.0", path = "../core" }

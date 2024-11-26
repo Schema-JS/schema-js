@@ -124,3 +124,52 @@ impl SchemeJsManager {
         self.cancellation_token.cancel();
     }
 }
+
+#[cfg(test)]
+mod task_tests {
+    use crate::manager::task::Task;
+    use crate::manager::task_duration::TaskDuration;
+    use crate::manager::SchemeJsManager;
+    use parking_lot::RwLock;
+    use schemajs_config::SchemeJsConfig;
+    use schemajs_data::fdm::FileDescriptorManager;
+    use schemajs_engine::engine::SchemeJsEngine;
+    use schemajs_helpers::create_helper_channel;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    #[flaky_test::flaky_test(tokio)]
+    pub async fn test_task_manager() {
+        let create_helper = create_helper_channel(1);
+        let config = SchemeJsConfig::default();
+        let db_engine = Arc::new(RwLock::new(SchemeJsEngine::new(
+            None,
+            Arc::new(config),
+            create_helper.0,
+            Arc::new(FileDescriptorManager::new(2500)),
+        )));
+
+        let mut task_manager = SchemeJsManager::new(db_engine.clone());
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        let counter_clone = counter.clone();
+
+        let task = Task::new(
+            "1".to_string(),
+            Box::new(move |rt| {
+                counter_clone.clone().fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }),
+            TaskDuration::Defined(Duration::from_secs(2)),
+            true,
+        );
+
+        task_manager.add_task(task);
+        task_manager.start_tasks();
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        task_manager.stop_tasks();
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+        assert_eq!(counter.load(Ordering::Acquire), 3);
+    }
+}
