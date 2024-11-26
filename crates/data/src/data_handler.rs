@@ -119,7 +119,7 @@ mod data_handler_tests {
         let file = read_mmap(fake_partial_folder_path.clone());
         let mut mmap = unsafe { MmapOptions::new().map_mut(&file).unwrap() };
         assert_eq!(mmap.to_vec(), b"Xello World".to_vec());
-        std::fs::remove_file(fake_partial_folder_path).unwrap();
+        let _ = std::fs::remove_file(fake_partial_folder_path);
     }
 
     #[tokio::test]
@@ -157,6 +157,6 @@ mod data_handler_tests {
         assert_eq!(mmap.to_vec(), b"Xello123456".to_vec());
 
         // Clean up the test file
-        std::fs::remove_file(fake_partial_folder_path).unwrap();
+        let _ = std::fs::remove_file(fake_partial_folder_path);
     }
 }

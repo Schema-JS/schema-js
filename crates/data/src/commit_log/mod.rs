@@ -209,7 +209,7 @@ mod test {
         assert_eq!(items[0], "0");
         assert_eq!(items[99], "99");
 
-        std::fs::remove_file(fake_partial_folder_path).unwrap()
+        let _ = std::fs::remove_file(fake_partial_folder_path);
     }
 
     #[test]
