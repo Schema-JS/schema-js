@@ -4,7 +4,9 @@ use schemajs_data::commit_log::collection::CommitLogCollection;
 use schemajs_data::commit_log::iterator::{CommitLogIterator, CommitLogIteratorItem};
 use schemajs_data::commit_log::operations::{CommitLogEntry, OperationData};
 use schemajs_data::commit_log::reconciliation_file::ReconciliationFile;
+use schemajs_data::errors::ShardErrors;
 use schemajs_data::shard::insert_item::InsertItem;
+use schemajs_data::shard::item_type::ShardItem;
 use schemajs_data::shard::map_shard::MapShard;
 use schemajs_data::shard::shards::data_shard::config::DataShardConfig;
 use schemajs_data::shard::shards::data_shard::shard::DataShard;
@@ -14,6 +16,7 @@ use std::fmt::{Debug, Formatter};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Instant;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -119,6 +122,14 @@ impl TableCommitLogCollection {
         self.on_reconcile = OnReconcileCb { func: Some(data) };
     }
 
+    // Maybe async?
+    fn call_on_reconcile(&self, data: Vec<DataWithIndex>) -> Result<(), ()> {
+        match &self.on_reconcile.func {
+            None => Ok(()),
+            Some(cb) => cb(data),
+        }
+    }
+
     pub fn insert(&self, data: &[&[u8]]) -> Result<TableCommitStatus, TableCommitError> {
         let entries: Vec<CommitLogEntry> = data
             .iter()
@@ -158,78 +169,83 @@ impl TableCommitLogCollection {
             (-1, 0)
         };
 
-        let logs = self.commit_log_collection.logs.read();
+        {
+            let logs = self.commit_log_collection.logs.read();
 
-        let mut insert_queue = vec![];
-        let mut delete_queue = vec![];
-        let mut update_queue = vec![];
+            let mut insert_queue = vec![];
+            let mut delete_queue = vec![];
+            let mut update_queue = vec![];
 
-        let mut bytes_in_queue = 0;
+            let mut bytes_in_queue = 0;
 
-        for (index, log) in logs.iter().enumerate() {
-            if index < last_log_indx {
-                continue;
-            }
-
-            reconcile_file.set_last_commit_log_index(index as u64);
-            let _ = reconcile_file
-                .flush()
-                .map_err(|_| TableCommitError::ReconcileError)?;
-
-            let mut commit_log_cursor = log.get_cursor();
-
-            for (log_index, log) in CommitLogIterator::new(&mut commit_log_cursor).enumerate() {
-                if last_entry_indx >= 0 && log_index <= last_entry_indx as usize {
+            for (index, log) in logs.iter().enumerate() {
+                if index < last_log_indx {
                     continue;
                 }
 
-                match log {
-                    CommitLogIteratorItem::Valid(entry) => match entry.data {
-                        OperationData::Insert { data } => {
-                            bytes_in_queue += data.len();
-                            insert_queue.push((data, entry.id));
-                        }
-                        OperationData::Delete { global_indx } => {
-                            delete_queue.push(global_indx);
-                            bytes_in_queue += U64_SIZE;
-                        }
-                        OperationData::Update {
-                            new_data,
-                            global_indx,
-                        } => {
-                            bytes_in_queue += new_data.len() + U64_SIZE;
-                            update_queue.push((new_data, global_indx));
-                        }
-                        OperationData::Raw { .. } => {}
-                    },
-                    CommitLogIteratorItem::Broken => continue,
-                }
+                reconcile_file.set_last_commit_log_index(index as u64);
+                let _ = reconcile_file
+                    .flush()
+                    .map_err(|_| TableCommitError::ReconcileError)?;
 
-                if bytes_in_queue >= self.min_bytes_master_merge {
-                    Self::merge_changes(
-                        &mut main_shard,
-                        &mut insert_queue,
-                        &mut delete_queue,
-                        &mut update_queue,
-                        &mut reconcile_file,
-                        log_index as u64,
-                        needs_recovery,
-                    )?;
-                    bytes_in_queue = 0;
+                let mut commit_log_cursor = log.get_cursor();
+
+                let iterator_time = Instant::now();
+                for (log_index, log) in CommitLogIterator::new(&mut commit_log_cursor).enumerate() {
+                    if last_entry_indx >= 0 && log_index <= last_entry_indx as usize {
+                        continue;
+                    }
+
+                    match log {
+                        CommitLogIteratorItem::Valid(entry) => match entry.data {
+                            OperationData::Insert { data } => {
+                                bytes_in_queue += data.len();
+                                insert_queue.push((data, entry.id));
+                            }
+                            OperationData::Delete { global_indx } => {
+                                delete_queue.push(global_indx);
+                                bytes_in_queue += U64_SIZE;
+                            }
+                            OperationData::Update {
+                                new_data,
+                                global_indx,
+                            } => {
+                                bytes_in_queue += new_data.len() + U64_SIZE;
+                                update_queue.push((new_data, global_indx));
+                            }
+                            OperationData::Raw { .. } => {}
+                        },
+                        CommitLogIteratorItem::Broken => continue,
+                    }
+
+                    if bytes_in_queue >= self.min_bytes_master_merge {
+                        Self::merge_changes(
+                            &mut main_shard,
+                            &mut insert_queue,
+                            &mut delete_queue,
+                            &mut update_queue,
+                            &mut reconcile_file,
+                            log_index as u64,
+                            needs_recovery,
+                            &self.on_reconcile,
+                        )?;
+                        bytes_in_queue = 0;
+                    }
                 }
             }
-        }
 
-        if bytes_in_queue > 0 {
-            Self::merge_changes(
-                &mut main_shard,
-                &mut insert_queue,
-                &mut delete_queue,
-                &mut update_queue,
-                &mut reconcile_file,
-                0,
-                needs_recovery,
-            )?;
+            if bytes_in_queue > 0 {
+                Self::merge_changes(
+                    &mut main_shard,
+                    &mut insert_queue,
+                    &mut delete_queue,
+                    &mut update_queue,
+                    &mut reconcile_file,
+                    0,
+                    needs_recovery,
+                    &self.on_reconcile,
+                )?;
+            }
         }
 
         // Reset logs
@@ -250,6 +266,7 @@ impl TableCommitLogCollection {
         reconciliation_file: &mut ReconciliationFile,
         log_index: u64,
         is_recovering: bool,
+        on_reconcile_cb: &OnReconcileCb,
     ) -> Result<(), TableCommitError> {
         // Inserts
         {
@@ -299,6 +316,43 @@ impl TableCommitLogCollection {
             }
 
             update_queue.clear();
+        }
+
+        // Reconciliation hooks
+        // TODO: Include delete/updates
+        // TODO: Transform into a streaming on the JS side.
+        // TODO: Move to offthread that handls channels.
+        {
+            let last_index = main_shard.get_last_index();
+            let indexes = if last_index < 0 {
+                0..0
+            } else {
+                0..(last_index + 1)
+            };
+
+            let mut reconciling_items = vec![];
+            // TODO: What if the row is inserted `target.insert_rows` but, the reconciling (call_on_reconcile) fails?
+            for item_index in indexes {
+                let binary_item = main_shard.get_element(item_index);
+                match binary_item {
+                    Ok(shard_item) => {
+                        // TODO. Duplication of `get_used_data`
+                        reconciling_items.push(DataWithIndex {
+                            data: shard_item.get_used_data().to_vec(),
+                            index: item_index as u64,
+                        });
+                    }
+                    Err(_) => {}
+                }
+            }
+
+            match &on_reconcile_cb.func {
+                None => {}
+                Some(cb) => {
+                    // TODO what if it errors?
+                    let _ = cb(reconciling_items);
+                }
+            };
         }
 
         reconciliation_file.set_last_reconciled_entry(log_index);
@@ -360,21 +414,21 @@ mod tests {
             data_folder.clone(),
             "log",
             2,
-            1015, // 1008 is because `entry_len_without_data` is 28. assuming an item of 1byte. Only for the sake of testing
-            1015,
+            1026, // 1008 is because `entry_len_without_data` is 28. assuming an item of 1byte. Only for the sake of testing
+            1026,
         );
 
         let entry = CommitLogEntry::insert(b"1");
         let entry_vec = entry.to_vec();
         let entry_len = entry_vec.len();
         let entry_len_without_data = entry_len - 1;
-        assert_eq!(entry_len_without_data, 28);
+        assert_eq!(entry_len_without_data, 53);
 
         assert_eq!(collection.commit_log_collection.logs.read().len(), 1);
 
-        // Insert 1015 bytes ( 1015 / 29 = 35)
+        // Insert 1015 bytes ( 1026 / 54 = 19)
         let mut items = vec![];
-        for item in 0..35 {
+        for item in 0..19 {
             let log = CommitLogEntry::insert(b"1"); // 1 just to represent 1 byte. Not that it really matters honestly
             items.push(log);
         }

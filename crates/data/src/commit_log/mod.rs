@@ -217,7 +217,7 @@ mod test {
         let fake_partial_folder_path = std::env::current_dir()
             .unwrap()
             .join("./test_cases/commit-log-lock.bin".to_string());
-        std::fs::remove_file(fake_partial_folder_path.clone()).unwrap();
+        let _ = std::fs::remove_file(fake_partial_folder_path.clone());
 
         let mut commit_log = CommitLog::new(fake_partial_folder_path, 1024);
 
@@ -303,7 +303,7 @@ mod test {
         let _ = std::fs::remove_file(&fake_partial_folder_path);
 
         // Create a commit log with a small size to simulate running out of space
-        let commit_log = Arc::new(CommitLog::new(fake_partial_folder_path, 28)); // Only 16 bytes available
+        let commit_log = Arc::new(CommitLog::new(fake_partial_folder_path, 70)); // Only 16 bytes available
         let barrier = Arc::new(Barrier::new(3)); // 3 threads (main + 2 writers)
 
         // Thread 1: Attempt to write 4 bytes

@@ -3,7 +3,9 @@ use crate::commit_log::operations::{
     CommitLogEntry, CommitLogOperationType, END_DELIMITER, START_DELIMITER,
 };
 use crate::cursor::Cursor;
+use crate::utils::is_zero_aligned;
 use enum_as_inner::EnumAsInner;
+use std::time::Instant;
 
 #[derive(Debug)]
 pub struct CommitLogIterator<'a> {
@@ -20,14 +22,13 @@ impl<'a> CommitLogIterator<'a> {
             return Err(CommitLogError::Eof);
         }
 
-        //let (_item_type, _uuid, payload_size) = CommitLogEntry::validate_header(self.cursor);
         let validate_header = CommitLogEntry::validate_header(self.cursor);
 
         if let Err(e) = validate_header {
             if !e.is_eof() {
                 // Full scan did not find valid entries
                 let nearest_entry = self
-                    .find_next_start_delimiter_chunked(4096)
+                    .find_next_start_delimiter_chunked((1024 * 1024) * 4)
                     .ok_or_else(|| CommitLogError::Eof)?;
                 self.cursor.move_to(nearest_entry as usize);
                 return Err(CommitLogError::BrokenRecord);
@@ -71,7 +72,7 @@ impl<'a> CommitLogIterator<'a> {
                 Err(err) => {
                     self.cursor.set_back(already_consumed);
                     let nearest_entry = self
-                        .find_next_start_delimiter_chunked(4096)
+                        .find_next_start_delimiter_chunked((1024 * 1024) * 4)
                         .ok_or_else(|| CommitLogError::Eof)?;
                     self.cursor.move_to(nearest_entry as usize);
                     Err(CommitLogError::BrokenRecord)
@@ -83,6 +84,7 @@ impl<'a> CommitLogIterator<'a> {
     }
 
     fn find_next_start_delimiter_chunked(&mut self, chunk_size: usize) -> Option<u64> {
+        let instant = Instant::now();
         let mut current_position = self.cursor.position;
         let total_length = self.cursor.len;
 
@@ -90,10 +92,17 @@ impl<'a> CommitLogIterator<'a> {
             // Calculate the end of the current chunk
             let end_position = (current_position + chunk_size).min(total_length);
 
+            let chunk = self.cursor.get_range(current_position..end_position);
+
+            // TODO: This could be catastrophic consequences
+            // If data was lost, or for some reason badly written with 0s
+            // And Chunk=size ended up being 0s but after that there's records
+            if is_zero_aligned(chunk) {
+                return None;
+            }
+
             // Search the current chunk for the delimiter
-            if let Some(pos) = self
-                .cursor
-                .get_range(current_position..end_position)
+            if let Some(pos) = chunk
                 .windows(START_DELIMITER.len())
                 .position(|window| window == START_DELIMITER)
             {

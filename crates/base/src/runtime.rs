@@ -510,6 +510,22 @@ mod test {
     }
 
     #[tokio::test]
+    async fn my_test_with_abort() {
+        let handle = tokio::spawn(async {
+            loop {
+                println!("Task running");
+                tokio::task::yield_now().await
+            }
+        });
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        // Abort the task explicitly
+        //handle.abort();
+        println!("Task aborted");
+    }
+
+    #[tokio::test]
     pub async fn test_runtime_insert_file_persistence() -> anyhow::Result<()> {
         let (tx, rx) = create_helper_channel(1);
         let data_path = format!("./test_cases/data/{}", Uuid::new_v4().to_string());
@@ -520,14 +536,20 @@ mod test {
         std::fs::create_dir_all(data_path.clone()).unwrap();
         let now = std::time::Instant::now();
 
+        let mut tasks_manager_cancel_tokens = vec![];
+
         for _ in 0..2 {
             {
-                let mut create_rt = SchemeJsRuntime::new(Arc::new(SjsContext::new(
+                let ctx = Arc::new(SjsContext::new(
                     PathBuf::from("./test_cases/default-db"),
                     Some(data_path.clone()),
                     tx.clone(),
-                )?))
-                .await?;
+                )?);
+
+                let cancel_token = ctx.task_manager.read().cancellation_token.clone();
+                tasks_manager_cancel_tokens.push(cancel_token);
+
+                let mut create_rt = SchemeJsRuntime::new(ctx).await?;
 
                 let num_inserts = 5001;
                 let mut script = String::new();
@@ -548,21 +570,25 @@ mod test {
                     .execute_script(located_script_name!(), script)?;
 
                 println!("Executed");
-
-                // Give it some time to reconcile in the background
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             }
         }
+
+        // Give it some time to reconcile in the background
+        tokio::time::sleep(Duration::from_secs(5)).await;
 
         let elapsed = now.elapsed();
         println!("Elapsed: {:.5?}", elapsed);
 
-        let mut last_rt = SchemeJsRuntime::new(Arc::new(SjsContext::new(
+        let ctx = Arc::new(SjsContext::new(
             PathBuf::from("./test_cases/default-db"),
             Some(data_path.clone()),
             tx,
-        )?))
-        .await?;
+        )?);
+
+        let cancel_token = ctx.task_manager.read().cancellation_token.clone();
+        tasks_manager_cancel_tokens.push(cancel_token);
+
+        let mut last_rt = SchemeJsRuntime::new(ctx).await?;
 
         let val = {
             let engine = last_rt.ctx.engine.clone();
@@ -577,15 +603,19 @@ mod test {
             (
                 header_reader.get_last_offset_index(),
                 header_reader.get_next_available_index().unwrap(),
-                table_read.get_element(2000).is_err(),
+                table_read.get_element(5001).is_err(),
             )
         };
 
         std::fs::remove_dir_all(data_path).unwrap();
 
-        assert_eq!(val.0, 1999);
-        assert_eq!(val.1, 2000);
+        assert_eq!(val.0, 5000);
+        assert_eq!(val.1, 5001);
         assert!(val.2);
+
+        for x in tasks_manager_cancel_tokens {
+            x.cancel();
+        }
 
         Ok(())
     }
